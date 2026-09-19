@@ -5,7 +5,6 @@ import { minutesToHHMM, todayKey } from "@/lib/dates";
 import { formatPhone, whatsappLink } from "@/lib/phone";
 import { computeDepositCents } from "@/lib/payments/deposit";
 import { policyItems, hasPolicies } from "@/lib/policies";
-import { CATEGORY_LABELS } from "@/lib/services/categories";
 import { BookingWizard } from "./booking-wizard";
 import { Gallery } from "./gallery";
 
@@ -14,11 +13,12 @@ async function loadTenant(slug: string) {
     where: { slug },
     include: {
       services: { where: { active: true, deletedAt: null }, orderBy: { sortOrder: "asc" } },
+      categories: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true, slug: true, sortOrder: true } },
       professionals: {
         where: { active: true }, orderBy: { sortOrder: "asc" },
         include: { services: { select: { serviceId: true } }, availability: { orderBy: { weekday: "asc" } } },
       },
-      portfolio: { where: { visible: true }, orderBy: [{ sortOrder: "asc" }, { publishedAt: "desc" }], take: 24 },
+      portfolio: { where: { visible: true }, orderBy: [{ sortOrder: "asc" }, { publishedAt: "desc" }], take: 24, include: { category: { select: { name: true } } } },
     },
   });
 }
@@ -110,14 +110,14 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
               <h2 className="font-display text-2xl font-semibold text-brand-950">Trabalhos</h2>
               <span className="text-xs text-zinc-500">{tenant.portfolio.length} foto{tenant.portfolio.length > 1 ? "s" : ""}</span>
             </div>
-            <Gallery items={tenant.portfolio.map((p) => ({ id: p.id, imageUrl: p.imageUrl, title: p.title, description: p.description, category: p.category ? CATEGORY_LABELS[p.category] : null }))} />
+            <Gallery items={tenant.portfolio.map((p) => ({ id: p.id, imageUrl: p.imageUrl, title: p.title, description: p.description, category: p.category?.name ?? null }))} />
           </section>
         )}
 
         {/* Agendamento */}
         <div className="px-5 py-6" id="agendar">
           {main.length === 0 ? (
-            <p className="rounded-xl bg-zinc-50 p-4 text-center text-sm text-zinc-500">Esta profissional ainda não liberou procedimentos para agendamento online.</p>
+            <p className="rounded-xl bg-zinc-50 p-4 text-center text-sm text-zinc-500">Este salão ainda não liberou serviços para agendamento online.</p>
           ) : (
             <BookingWizard
               slug={tenant.slug}
@@ -126,9 +126,10 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
               requireConfirmation={tenant.requireWhatsappConfirmation}
               requirePolicyAcceptance={tenant.requirePolicyAcceptance && hasPolicies(tenant)}
               policies={policies}
+              categories={tenant.categories}
               professionals={tenant.professionals.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photoUrl, bio: p.bio, serviceIds: p.services.map((s) => s.serviceId) }))}
               services={main.map((s) => ({
-                id: s.id, name: s.name, category: s.category, description: s.description, clientNotes: s.clientNotes,
+                id: s.id, name: s.name, categoryId: s.categoryId, description: s.description, clientNotes: s.clientNotes,
                 durationMinutes: s.durationMinutes, priceCents: s.priceCents, imageUrl: s.imageUrl,
                 depositCents: computeDepositCents(tenant, s.priceCents),
               }))}

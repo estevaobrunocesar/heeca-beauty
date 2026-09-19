@@ -21,7 +21,8 @@ const errMessage = (e: unknown) => (e instanceof AppointmentError ? e.message : 
 /** Carrega o agendamento garantindo tenant e permissão sobre o profissional (STAFF só vê os seus). */
 async function loadAccessible(ctx: AuthContext, id: string) {
   return db.appointment.findFirst({
-    where: { id, tenantId: ctx.tenant.id, professionalId: { in: ctx.professionals.map((p) => p.id) } },
+    // STAFF enxerga a visita se ao menos um item é seu.
+    where: { id, tenantId: ctx.tenant.id, items: { some: { professionalId: { in: ctx.professionals.map((p) => p.id) } } } },
   });
 }
 
@@ -88,9 +89,7 @@ export async function createManualAppointmentAction(_prev: ActionResult, formDat
     const professional = resolveProfessional(ctx, d.professionalId);
     const appt = await createAppointment({
       tenant: ctx.tenant,
-      professionalId: professional.id,
-      serviceId: d.serviceId,
-      addOnIds: d.addOnIds ? d.addOnIds.split(",") : [],
+      items: [{ serviceId: d.serviceId, professionalId: professional.id, addOnIds: d.addOnIds ? d.addOnIds.split(",") : [] }],
       dateKey: d.dateKey,
       minutes: d.minutes,
       client: { name: d.clientName, phone: d.clientPhone },

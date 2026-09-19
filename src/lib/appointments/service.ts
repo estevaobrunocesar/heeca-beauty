@@ -4,13 +4,16 @@ import { db } from "@/lib/db";
 import type { Tenant } from "@/generated/prisma/client";
 import type { AppointmentActor, AppointmentSource, AppointmentStatus } from "@/generated/prisma/enums";
 import { normalizePhone } from "@/lib/phone";
-import { getAvailableSlots, getAvailableSlotsAny } from "@/lib/scheduling/service";
+import { getVisitSlots } from "@/lib/scheduling/service";
+import type { VisitItem } from "@/lib/scheduling/availability";
+import { zonedDateTimeToUtc } from "@/lib/dates";
 import { sendAppointmentMessage } from "@/lib/whatsapp/service";
 import { canTransition, ACTIVE_STATUSES } from "./status";
 import { canClientCancel, computeExpiresAt, shouldRefundDeposit } from "./policies";
 import { computeDepositCents } from "@/lib/payments/deposit";
 import { createDepositCharge, expireDeposit, refundDeposit } from "@/lib/payments/service";
-import { computeBookingTotals, normalizeAddOnIds } from "@/lib/services/addons";
+import { computeBookingTotals, describeBooking, normalizeAddOnIds } from "@/lib/services/addons";
+import { describeVisit, visitTotals } from "./summary";
 
 export class AppointmentError extends Error {
   constructor(message: string, readonly code: string = "APPOINTMENT_ERROR") {
@@ -18,62 +21,110 @@ export class AppointmentError extends Error {
   }
 }
 
+/** Um serviço pedido pela cliente, ainda sem horário. */
+export type CreateItemInput = {
+  serviceId: string;
+  /** Omitido = "qualquer profissional": o sistema escolhe quem estiver livre (SPEC §10). */
+  professionalId?: string | null;
+  /** Adicionais (Service.isAddOn) escolhidos junto com este serviço. */
+  addOnIds?: string[] | null;
+};
+
 type CreateInput = {
   tenant: Tenant;
-  /** Omitido = "qualquer profissional": o sistema escolhe quem estiver livre. */
-  professionalId?: string | null;
-  serviceId: string;
-  /** Adicionais (Service.isAddOn) escolhidos junto com o procedimento principal. */
-  addOnIds?: string[] | null;
+  /** Serviços da visita, na ordem em que a cliente vai fazê-los (SPEC §11). */
+  items: CreateItemInput[];
   dateKey: string;
-  minutes: number;
+  minutes: number; // início da visita (minutos do dia no fuso do tenant)
   client: { name: string; phone: string; email?: string | null };
   notes?: string | null;
   source: AppointmentSource;
   actor: AppointmentActor;
 };
 
+export const MAX_ITEMS_PER_VISIT = 6;
+
 /**
- * Cria um agendamento validando disponibilidade, duplicidade e conflitos.
- * Fluxo (seção 5): registra → aciona WhatsApp → aguarda confirmação do cliente.
+ * Resolve os serviços/adicionais/profissionais pedidos e monta os `VisitItem` do motor.
+ * Compartilhado por `createAppointment` e pela rota pública de horários, para que a lista
+ * de horários e a validação do pedido usem exatamente as mesmas regras.
+ */
+export async function resolveVisitItems(tenantId: string, inputs: CreateItemInput[]) {
+  if (inputs.length === 0) throw new AppointmentError("Escolha ao menos um serviço.", "NO_ITEMS");
+  if (inputs.length > MAX_ITEMS_PER_VISIT) throw new AppointmentError(`No máximo ${MAX_ITEMS_PER_VISIT} serviços por agendamento.`, "TOO_MANY_ITEMS");
+
+  const serviceIds = [...new Set(inputs.map((i) => i.serviceId))];
+  const addOnIds = [...new Set(inputs.flatMap((i) => normalizeAddOnIds(i.addOnIds)))];
+  const [services, addOns] = await Promise.all([
+    db.service.findMany({
+      where: { id: { in: serviceIds }, tenantId, active: true, deletedAt: null, isAddOn: false },
+      include: { professionals: { where: { professional: { active: true } }, include: { professional: { select: { id: true, sortOrder: true } } } } },
+    }),
+    addOnIds.length
+      ? db.service.findMany({ where: { id: { in: addOnIds }, tenantId, active: true, deletedAt: null, isAddOn: true } })
+      : Promise.resolve([]),
+  ]);
+  if (services.length !== serviceIds.length) throw new AppointmentError("Um dos serviços escolhidos não está mais disponível.", "SERVICE_NOT_FOUND");
+  if (addOns.length !== addOnIds.length) throw new AppointmentError("Um dos adicionais escolhidos não está mais disponível.", "ADDON_NOT_FOUND");
+  const serviceById = new Map(services.map((s) => [s.id, s]));
+  const addOnById = new Map(addOns.map((a) => [a.id, a]));
+
+  return inputs.map((input, index) => {
+    const service = serviceById.get(input.serviceId)!;
+    const itemAddOns = normalizeAddOnIds(input.addOnIds).map((id) => addOnById.get(id)!);
+    const totals = computeBookingTotals(service, itemAddOns);
+    // Quem pode executar este serviço (ativos, na ordem de exibição)
+    const eligible = service.professionals.map((ps) => ps.professional).sort((a, b) => a.sortOrder - b.sortOrder).map((p) => p.id);
+    if (eligible.length === 0) throw new AppointmentError(`Nenhum profissional disponível para "${service.name}".`, "NO_PROFESSIONAL");
+    let candidates = eligible;
+    if (input.professionalId) {
+      if (!eligible.includes(input.professionalId)) throw new AppointmentError(`Este profissional não realiza "${service.name}".`, "PROFESSIONAL_MISMATCH");
+      candidates = [input.professionalId];
+    }
+    const visitItem: VisitItem = { key: String(index), durationMinutes: totals.durationMinutes, candidates };
+    return {
+      visitItem,
+      service,
+      addOns: itemAddOns,
+      serviceName: describeBooking(service.name, itemAddOns.map((a) => a.name)),
+      durationMinutes: totals.durationMinutes,
+      priceCents: totals.priceCents,
+    };
+  });
+}
+
+/**
+ * Cria uma visita validando disponibilidade de cada profissional, duplicidade e conflitos.
+ * Fluxo: registra → aciona WhatsApp → aguarda confirmação da cliente.
  */
 export async function createAppointment(input: CreateInput) {
-  const { tenant, serviceId, dateKey, minutes, source, actor } = input;
+  const { tenant, dateKey, minutes, source, actor } = input;
 
-  const service = await db.service.findFirst({
-    where: { id: serviceId, tenantId: tenant.id, active: true, deletedAt: null, isAddOn: false },
-    include: { professionals: { where: { professional: { active: true } }, include: { professional: { select: { id: true, sortOrder: true } } } } },
-  });
-  if (!service) throw new AppointmentError("Serviço indisponível.", "SERVICE_NOT_FOUND");
-
-  // Adicionais: só os ativos do mesmo tenant; qualquer id inválido invalida o pedido.
-  const addOnIds = normalizeAddOnIds(input.addOnIds);
-  const addOns = addOnIds.length
-    ? await db.service.findMany({ where: { id: { in: addOnIds }, tenantId: tenant.id, active: true, deletedAt: null, isAddOn: true } })
-    : [];
-  if (addOns.length !== addOnIds.length) throw new AppointmentError("Um dos adicionais escolhidos não está mais disponível.", "ADDON_NOT_FOUND");
-  const totals = computeBookingTotals(service, addOns);
-
-  // Quem pode executar este serviço (ativos, na ordem de exibição)
-  const eligible = service.professionals.map((ps) => ps.professional).sort((a, b) => a.sortOrder - b.sortOrder).map((p) => p.id);
-  if (eligible.length === 0) throw new AppointmentError("Nenhum profissional disponível para este serviço.", "NO_PROFESSIONAL");
+  const resolved = await resolveVisitItems(tenant.id, input.items);
+  const totals = visitTotals(resolved);
 
   const phone = normalizePhone(input.client.phone);
   if (!phone) throw new AppointmentError("Número de WhatsApp inválido.", "INVALID_PHONE");
 
   // A mesma função que lista horários na página pública valida a escolha aqui.
-  let professionalId: string;
-  let slot: { minutes: number; startsAt: Date; endsAt: Date } | undefined;
-  if (input.professionalId) {
-    if (!eligible.includes(input.professionalId)) throw new AppointmentError("Este profissional não realiza o serviço escolhido.", "PROFESSIONAL_MISMATCH");
-    professionalId = input.professionalId;
-    slot = (await getAvailableSlots({ tenant, professionalId, dateKey, durationMinutes: totals.durationMinutes })).find((s) => s.minutes === minutes);
-  } else {
-    const any = (await getAvailableSlotsAny({ tenant, professionalIds: eligible, dateKey, durationMinutes: totals.durationMinutes })).find((s) => s.minutes === minutes);
-    professionalId = any?.professionalId ?? "";
-    slot = any;
-  }
-  if (!slot || !professionalId) throw new AppointmentError("Este horário não está mais disponível. Escolha outro.", "SLOT_UNAVAILABLE");
+  const slot = (await getVisitSlots({ tenant, items: resolved.map((r) => r.visitItem), dateKey })).find((s) => s.minutes === minutes);
+  if (!slot) throw new AppointmentError("Este horário não está mais disponível. Escolha outro.", "SLOT_UNAVAILABLE");
+  const placementOf = (index: number) => slot.placements.find((p) => p.key === String(index))!;
+  const itemRows = resolved.map((r, index) => {
+    const p = placementOf(index);
+    return {
+      tenantId: tenant.id,
+      professionalId: p.professionalId,
+      serviceId: r.service.id,
+      startsAt: zonedDateTimeToUtc(dateKey, p.start, tenant.timezone),
+      endsAt: zonedDateTimeToUtc(dateKey, p.end, tenant.timezone),
+      sortOrder: index,
+      serviceName: r.serviceName,
+      durationMinutes: r.durationMinutes,
+      priceCents: r.priceCents,
+      addOns: { create: r.addOns.map((a) => ({ serviceId: a.id, name: a.name, durationMinutes: a.durationMinutes, priceCents: a.priceCents })) },
+    };
+  });
 
   // Sinal via Pix: só para agendamentos da página pública. Pagou = confirmou.
   const depositCents = source === "PUBLIC" ? computeDepositCents(tenant, totals.priceCents) : 0;
@@ -103,17 +154,15 @@ export async function createAppointment(input: CreateInput) {
       const created = await tx.appointment.create({
         data: {
           tenantId: tenant.id,
-          professionalId,
-          serviceId: service.id,
           clientId: client.id,
           startsAt: slot.startsAt,
           endsAt: slot.endsAt,
           status: initialStatus,
           source,
-          serviceName: service.name,
+          serviceName: describeVisit(resolved),
           durationMinutes: totals.durationMinutes,
           priceCents: totals.priceCents,
-          addOns: { create: addOns.map((a) => ({ serviceId: a.id, name: a.name, durationMinutes: a.durationMinutes, priceCents: a.priceCents })) },
+          items: { create: itemRows },
           notes: input.notes?.trim() || null,
           confirmationToken: nanoid(24),
           confirmedAt: autoConfirm ? new Date() : null,
@@ -125,17 +174,20 @@ export async function createAppointment(input: CreateInput) {
         },
       });
 
-      // Proteção contra corrida: dois clientes reservando o mesmo slot ao mesmo tempo.
-      const concurrent = await tx.appointment.count({
-        where: {
-          professionalId,
-          status: { in: ACTIVE_STATUSES },
-          startsAt: { lt: slot.endsAt },
-          endsAt: { gt: slot.startsAt },
-        },
-      });
-      if (concurrent > tenant.maxConcurrentAppointments) {
-        throw new AppointmentError("Este horário acabou de ser reservado por outra pessoa.", "SLOT_UNAVAILABLE");
+      // Proteção contra corrida: duas clientes reservando o mesmo profissional ao mesmo tempo.
+      // Checa item a item, porque cada um ocupa a agenda de um profissional diferente.
+      for (const row of itemRows) {
+        const concurrent = await tx.appointmentItem.count({
+          where: {
+            professionalId: row.professionalId,
+            appointment: { status: { in: ACTIVE_STATUSES } },
+            startsAt: { lt: row.endsAt },
+            endsAt: { gt: row.startsAt },
+          },
+        });
+        if (concurrent > tenant.maxConcurrentAppointments) {
+          throw new AppointmentError("Este horário acabou de ser reservado por outra pessoa.", "SLOT_UNAVAILABLE");
+        }
       }
       return created;
     },
@@ -217,13 +269,16 @@ export async function reschedule(input: {
   actor: AppointmentActor;
 }) {
   const { tenant, dateKey, minutes, actor } = input;
-  const appt = await db.appointment.findFirst({ where: { id: input.appointmentId, tenantId: tenant.id } });
+  const appt = await db.appointment.findFirst({
+    where: { id: input.appointmentId, tenantId: tenant.id },
+    include: { items: { orderBy: { sortOrder: "asc" } } },
+  });
   if (!appt) throw new AppointmentError("Agendamento não encontrado.", "NOT_FOUND");
   if (!ACTIVE_STATUSES.includes(appt.status)) throw new AppointmentError("Só é possível reagendar agendamentos ativos.");
 
-  const slots = await getAvailableSlots({
-    tenant, professionalId: appt.professionalId, dateKey, durationMinutes: appt.durationMinutes, excludeAppointmentId: appt.id,
-  });
+  // Mesmos profissionais e durações; só a sequência é recolocada no novo início.
+  const visitItems: VisitItem[] = appt.items.map((it) => ({ key: it.id, durationMinutes: it.durationMinutes, candidates: [it.professionalId] }));
+  const slots = await getVisitSlots({ tenant, items: visitItems, dateKey, excludeAppointmentId: appt.id });
   const slot = slots.find((s) => s.minutes === minutes);
   if (!slot) throw new AppointmentError("Horário indisponível para reagendamento.", "SLOT_UNAVAILABLE");
 
@@ -234,6 +289,12 @@ export async function reschedule(input: {
     data: {
       startsAt: slot.startsAt,
       endsAt: slot.endsAt,
+      items: {
+        update: slot.placements.map((p) => ({
+          where: { id: p.key },
+          data: { startsAt: zonedDateTimeToUtc(dateKey, p.start, tenant.timezone), endsAt: zonedDateTimeToUtc(dateKey, p.end, tenant.timezone) },
+        })),
+      },
       reminderSentAt: null, // novo horário, novo lembrete
       ...(resolvingRequest ? { status: "CONFIRMED", confirmedAt: new Date() } : {}),
       events: {
@@ -254,7 +315,7 @@ export async function reschedule(input: {
 export async function findByToken(token: string) {
   return db.appointment.findUnique({
     where: { confirmationToken: token },
-    include: { tenant: true, professional: true, client: true },
+    include: { tenant: true, client: true, items: { orderBy: { sortOrder: "asc" }, include: { professional: true } } },
   });
 }
 

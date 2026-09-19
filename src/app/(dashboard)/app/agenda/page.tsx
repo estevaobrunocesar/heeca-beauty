@@ -11,6 +11,7 @@ import { AppointmentCard } from "@/components/dashboard/appointment-card";
 import { Avatar } from "@/components/dashboard/avatar";
 import { ScheduleManager } from "./schedule-manager";
 import type { AppointmentStatus } from "@/generated/prisma/enums";
+import { cardInclude, withProfessionals } from "@/lib/appointments/queries";
 
 export const metadata: Metadata = { title: "Agenda" };
 
@@ -50,8 +51,8 @@ export default async function AgendaPage({ searchParams }: PageProps<"/app/agend
 
   const [appointments, blocks, exceptions] = await Promise.all([
     db.appointment.findMany({
-      where: { tenantId: tenant.id, professionalId: { in: proIds }, startsAt: { gte: fromUtc, lt: toUtc } },
-      include: { client: true, professional: { select: { id: true, name: true, photoUrl: true } }, addOns: { select: { name: true } } },
+      where: { tenantId: tenant.id, ...withProfessionals(proIds), startsAt: { gte: fromUtc, lt: toUtc } },
+      include: cardInclude,
       orderBy: { startsAt: "asc" },
     }),
     db.scheduleBlock.findMany({ where: { professionalId: { in: proIds }, startsAt: { lt: toUtc }, endsAt: { gt: fromUtc } }, orderBy: { startsAt: "asc" } }),

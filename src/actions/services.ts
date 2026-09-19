@@ -6,10 +6,11 @@ import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
 import { parseMoneyToCents } from "@/lib/money";
 import { fail, success, type ActionResult } from "@/lib/action-result";
+import { ownedCategoryId } from "@/lib/services/categories-db";
 
 const serviceSchema = z.object({
   name: z.string().trim().min(2, "Informe o nome do procedimento").max(80),
-  category: z.enum(["MANICURE", "PEDICURE", "ALONGAMENTO", "ADICIONAL", "OUTROS"]),
+  categoryId: z.string().trim().max(40).optional().or(z.literal("")),
   description: z.string().trim().max(500).optional().or(z.literal("")),
   clientNotes: z.string().trim().max(500).optional().or(z.literal("")),
   isAddOn: z.coerce.boolean().optional(),
@@ -32,7 +33,7 @@ function parse(formData: FormData) {
   void _price;
   return {
     ok: true as const,
-    data: { ...rest, priceCents, isAddOn: rest.isAddOn ?? false, description: rest.description || null, clientNotes: rest.clientNotes || null, imageUrl: rest.imageUrl || null },
+    data: { ...rest, categoryId: rest.categoryId || null, priceCents, isAddOn: rest.isAddOn ?? false, description: rest.description || null, clientNotes: rest.clientNotes || null, imageUrl: rest.imageUrl || null },
   };
 }
 
@@ -41,6 +42,7 @@ export async function createServiceAction(_prev: ActionResult, formData: FormDat
   if (!isOwner) return fail("Apenas a responsável pode gerenciar os procedimentos.");
   const r = parse(formData);
   if (!r.ok) return fail(r.error);
+  r.data.categoryId = await ownedCategoryId(tenant.id, r.data.categoryId);
 
   const [last, professionals] = await Promise.all([
     db.service.findFirst({ where: { tenantId: tenant.id }, orderBy: { sortOrder: "desc" } }),
@@ -62,6 +64,7 @@ export async function updateServiceAction(id: string, _prev: ActionResult, formD
   if (!isOwner) return fail("Apenas a responsável pode gerenciar os procedimentos.");
   const r = parse(formData);
   if (!r.ok) return fail(r.error);
+  r.data.categoryId = await ownedCategoryId(tenant.id, r.data.categoryId);
 
   // updateMany com tenantId: nunca atualiza serviço de outro tenant, mesmo com id forjado.
   const res = await db.service.updateMany({ where: { id, tenantId: tenant.id }, data: { ...r.data, active: r.data.active ?? false } });

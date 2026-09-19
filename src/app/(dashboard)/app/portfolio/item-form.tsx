@@ -6,14 +6,13 @@ import { createPortfolioItemAction, updatePortfolioItemAction } from "@/actions/
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Alert } from "@/components/ui/alert";
 import type { ActionResult } from "@/lib/action-result";
-import type { ServiceCategory } from "@/generated/prisma/enums";
-import { CATEGORY_ICONS, CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/services/categories";
+import { categoryIcon, type CategoryRef } from "@/lib/services/categories";
 
 export type PortfolioFormValues = {
-  id?: string; imageUrl?: string; title?: string; description?: string | null; category?: ServiceCategory | null; visible?: boolean;
+  id?: string; imageUrl?: string; title?: string; description?: string | null; categoryId?: string | null; visible?: boolean;
 };
 
-export function PortfolioItemForm({ initial }: { initial?: PortfolioFormValues }) {
+export function PortfolioItemForm({ initial, categories }: { initial?: PortfolioFormValues; categories: CategoryRef[] }) {
   const router = useRouter();
   const action = initial?.id ? updatePortfolioItemAction.bind(null, initial.id) : createPortfolioItemAction;
   const [state, formAction] = useActionState<ActionResult, FormData>(action, null);
@@ -42,14 +41,14 @@ export function PortfolioItemForm({ initial }: { initial?: PortfolioFormValues }
         </div>
         <div className="grid gap-4 sm:grid-cols-[1fr_200px]">
           <div>
-            <label className="label" htmlFor="title">Nome do procedimento</label>
-            <input id="title" name="title" required className="input" defaultValue={initial?.title ?? ""} placeholder="Alongamento almond em fibra" />
+            <label className="label" htmlFor="title">Nome do trabalho</label>
+            <input id="title" name="title" required className="input" defaultValue={initial?.title ?? ""} placeholder="Mechas loiras com corte em camadas" />
           </div>
           <div>
             <label className="label" htmlFor="category">Categoria</label>
-            <select id="category" name="category" className="input" defaultValue={initial?.category ?? ""}>
+            <select id="category" name="categoryId" className="input" defaultValue={initial?.categoryId ?? ""}>
               <option value="">—</option>
-              {CATEGORY_ORDER.map((c) => <option key={c} value={c}>{CATEGORY_ICONS[c]} {CATEGORY_LABELS[c]}</option>)}
+              {categories.map((c) => <option key={c.id} value={c.id}>{categoryIcon(c.slug)} {c.name}</option>)}
             </select>
           </div>
         </div>

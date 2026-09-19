@@ -3,6 +3,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { fmtDate, fmtTime } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
+import { describeProfessionals } from "@/lib/appointments/summary";
 import { PixPayment } from "./pix-payment";
 
 export const metadata: Metadata = { title: "Pagar sinal" };
@@ -11,7 +12,7 @@ export default async function PayPage({ params }: PageProps<"/pagar/[token]">) {
   const { token } = await params;
   const appt = await db.appointment.findUnique({
     where: { confirmationToken: token },
-    include: { tenant: true, professional: true, client: true, payment: true },
+    include: { tenant: true, client: true, payment: true, items: { orderBy: { sortOrder: "asc" }, include: { professional: { select: { name: true } } } } },
   });
 
   if (!appt || !appt.payment) {
@@ -31,7 +32,7 @@ export default async function PayPage({ params }: PageProps<"/pagar/[token]">) {
       <p className="text-sm text-zinc-500">{appt.tenant.businessName}</p>
       <h1 className="mt-1 text-xl font-semibold">Sinal de {formatCents(p.amountCents)}</h1>
       <p className="mt-1 text-sm text-zinc-600">
-        {appt.serviceName} com {appt.professional.name} · {fmtDate(appt.startsAt, tz)} às {fmtTime(appt.startsAt, tz)}
+        {appt.serviceName} com {describeProfessionals(appt.items)} · {fmtDate(appt.startsAt, tz)} às {fmtTime(appt.startsAt, tz)}
         <span className="text-zinc-400"> · valor do serviço {formatCents(appt.priceCents)}</span>
       </p>
 

@@ -19,13 +19,12 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
   const tz = tenant.timezone;
 
   const a = await db.appointment.findFirst({
-    where: { id, tenantId: tenant.id, professionalId: { in: ctx.professionals.map((p) => p.id) } },
+    where: { id, tenantId: tenant.id, items: { some: { professionalId: { in: ctx.professionals.map((p) => p.id) } } } },
     include: {
-      professional: { select: { id: true, name: true, photoUrl: true } },
+      items: { orderBy: { sortOrder: "asc" }, include: { professional: { select: { id: true, name: true, photoUrl: true } }, addOns: true } },
       events: { orderBy: { createdAt: "asc" } },
       messages: { orderBy: { createdAt: "desc" } },
       payment: true,
-      addOns: true,
       client: { include: { _count: { select: { appointments: true } } } },
     },
   });
@@ -44,17 +43,23 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h1 className="text-xl font-semibold">{a.serviceName}</h1>
-                {a.addOns.length > 0 && (
-                  <p className="mt-1 flex flex-wrap gap-1 text-sm">
-                    {a.addOns.map((x) => (
-                      <span key={x.id} className="rounded-full bg-brand-50 px-2 py-0.5 text-brand-800">+ {x.name} <span className="text-brand-500">({formatCents(x.priceCents)}{x.durationMinutes ? ` · ${x.durationMinutes} min` : ""})</span></span>
-                    ))}
-                  </p>
-                )}
                 <p className="mt-1 text-zinc-600">{fmtDateTime(a.startsAt, tz)} → {fmtTime(a.endsAt, tz)} · {a.durationMinutes} min · {formatCents(a.priceCents)}</p>
-                {ctx.professionals.length > 1 && (
-                  <p className="mt-1 flex items-center gap-1.5 text-sm text-zinc-600"><Avatar name={a.professional.name} photoUrl={a.professional.photoUrl} size="sm" /> {a.professional.name}</p>
-                )}
+                {/* Itens da visita: um por serviço, cada um com profissional e horário próprios (SPEC §11) */}
+                <ul className="mt-3 space-y-1.5 text-sm">
+                  {a.items.map((it) => (
+                    <li key={it.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="w-24 shrink-0 tabular-nums text-zinc-500">{fmtTime(it.startsAt, tz)}–{fmtTime(it.endsAt, tz)}</span>
+                      <span className="font-medium text-zinc-800">{it.serviceName}</span>
+                      {it.addOns.map((x) => (
+                        <span key={x.id} className="rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-800">+ {x.name} <span className="text-brand-500">({formatCents(x.priceCents)}{x.durationMinutes ? ` · ${x.durationMinutes} min` : ""})</span></span>
+                      ))}
+                      <span className="text-zinc-500">· {formatCents(it.priceCents)}</span>
+                      {(ctx.professionals.length > 1 || a.items.length > 1) && (
+                        <span className="flex items-center gap-1 text-zinc-600"><Avatar name={it.professional.name} photoUrl={it.professional.photoUrl} size="sm" /> {it.professional.name}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               </div>
               <StatusBadge status={a.status} className="text-sm" />
             </div>
@@ -72,8 +77,6 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
           <DetailTools
             id={a.id}
             slug={tenant.slug}
-            durationMinutes={a.durationMinutes}
-            professionalId={a.professionalId}
             todayKey={todayKey(tz)}
             maxAdvanceDays={tenant.maxAdvanceDays}
             internalNotes={a.internalNotes ?? ""}

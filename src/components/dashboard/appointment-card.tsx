@@ -3,21 +3,28 @@ import type { Appointment, Client } from "@/generated/prisma/client";
 import { fmtTime } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import { formatPhone } from "@/lib/phone";
+import { describeProfessionals } from "@/lib/appointments/summary";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { QuickActions } from "./quick-actions";
 import { Avatar } from "./avatar";
 
+type CardItem = { serviceName: string; professional: { name: string; photoUrl: string | null }; addOns?: { name: string }[] };
+
 type Props = {
-  appointment: Appointment & { client: Client; professional?: { name: string; photoUrl: string | null } | null; addOns?: { name: string }[] };
+  appointment: Appointment & { client: Client; items: CardItem[] };
   tz: string;
   compact?: boolean;
   showProfessional?: boolean;
 };
 
 export function AppointmentCard({ appointment: a, tz, compact, showProfessional }: Props) {
-  const pro = showProfessional ? a.professional : null;
   const cancelled = a.status === "CANCELLED_BY_CLIENT" || a.status === "CANCELLED_BY_PROFESSIONAL";
-  const addOns = a.addOns ?? [];
+  const addOns = a.items.flatMap((it) => it.addOns ?? []);
+  // Profissionais da visita: mostrados quando a agenda é da equipe toda ou quando há mais de um na visita.
+  const pros = [...new Map(a.items.map((it) => [it.professional.name, it.professional])).values()];
+  const pro = showProfessional || pros.length > 1
+    ? { name: describeProfessionals(a.items), photoUrl: pros.length === 1 ? pros[0].photoUrl : null }
+    : null;
 
   if (compact) {
     return (

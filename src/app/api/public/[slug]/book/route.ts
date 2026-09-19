@@ -1,14 +1,23 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { AppointmentError, createAppointment } from "@/lib/appointments/service";
+import { AppointmentError, createAppointment, MAX_ITEMS_PER_VISIT } from "@/lib/appointments/service";
+import { describeProfessionals } from "@/lib/appointments/summary";
 import { hasPolicies } from "@/lib/policies";
 
-const bodySchema = z.object({
+const itemSchema = z.object({
   serviceId: z.string().min(1),
-  addOnIds: z.array(z.string().min(1)).max(10).optional(),
-  acceptPolicies: z.boolean().optional(),
   professionalId: z.string().min(1).optional().nullable(), // null/omitido = qualquer profissional
+  addOnIds: z.array(z.string().min(1)).max(10).optional(),
+});
+
+const bodySchema = z.object({
+  // Visita com vários serviços (SPEC §11). Os campos soltos abaixo são o atalho de um único item.
+  items: z.array(itemSchema).min(1).max(MAX_ITEMS_PER_VISIT).optional(),
+  serviceId: z.string().min(1).optional(),
+  addOnIds: z.array(z.string().min(1)).max(10).optional(),
+  professionalId: z.string().min(1).optional().nullable(),
+  acceptPolicies: z.boolean().optional(),
   dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   minutes: z.number().int().min(0).max(1439),
   name: z.string().trim().min(2, "Informe seu nome").max(80),
@@ -35,6 +44,8 @@ export async function POST(req: Request, { params }: RouteContext<"/api/public/[
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos" }, { status: 400 });
   const d = parsed.data;
+  const items = d.items ?? (d.serviceId ? [{ serviceId: d.serviceId, professionalId: d.professionalId ?? null, addOnIds: d.addOnIds ?? [] }] : []);
+  if (items.length === 0) return NextResponse.json({ ok: false, error: "Escolha ao menos um serviço." }, { status: 400 });
 
   const tenant = await db.tenant.findUnique({ where: { slug } });
   if (!tenant) return NextResponse.json({ ok: false, error: "Estabelecimento não encontrado" }, { status: 404 });
@@ -46,9 +57,7 @@ export async function POST(req: Request, { params }: RouteContext<"/api/public/[
   try {
     const appt = await createAppointment({
       tenant,
-      professionalId: d.professionalId ?? null,
-      serviceId: d.serviceId,
-      addOnIds: d.addOnIds ?? [],
+      items,
       dateKey: d.dateKey,
       minutes: d.minutes,
       client: { name: d.name, phone: d.phone, email: d.email || null },
@@ -57,12 +66,12 @@ export async function POST(req: Request, { params }: RouteContext<"/api/public/[
       actor: "CLIENT",
     });
     // Status pode ter avançado para AWAITING_CONFIRMATION após o envio do WhatsApp.
-    const fresh = await db.appointment.findUnique({ where: { id: appt.id }, select: { status: true, professional: { select: { name: true } }, payment: { select: { amountCents: true } } } });
+    const fresh = await db.appointment.findUnique({ where: { id: appt.id }, select: { status: true, items: { orderBy: { sortOrder: "asc" }, select: { professional: { select: { name: true } } } }, payment: { select: { amountCents: true } } } });
     return NextResponse.json({
       ok: true,
       id: appt.id,
       status: fresh?.status ?? appt.status,
-      professionalName: fresh?.professional.name,
+      professionalName: fresh ? describeProfessionals(fresh.items) : undefined,
       // Sinal pendente: o front leva o cliente para a página do Pix
       paymentUrl: fresh?.status === "AWAITING_PAYMENT" ? `/pagar/${appt.confirmationToken}` : null,
       depositCents: fresh?.payment?.amountCents ?? null,

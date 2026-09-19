@@ -5,7 +5,6 @@ import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
-import { CATEGORY_LABELS } from "@/lib/services/categories";
 import { fmtDate } from "@/lib/dates";
 import { PortfolioItemActions } from "./item-actions";
 
@@ -18,6 +17,7 @@ export default async function PortfolioPage() {
   const items = await db.portfolioItem.findMany({
     where: { tenantId: tenant.id },
     orderBy: [{ sortOrder: "asc" }, { publishedAt: "desc" }],
+    include: { category: { select: { name: true } } },
   });
 
   return (
@@ -48,7 +48,7 @@ export default async function PortfolioPage() {
                   {!it.visible && <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] text-zinc-600">Oculta</span>}
                 </div>
                 <p className="mt-0.5 text-xs text-zinc-500">
-                  {it.category ? `${CATEGORY_LABELS[it.category]} · ` : ""}{fmtDate(it.publishedAt, tenant.timezone)}
+                  {it.category ? `${it.category.name} · ` : ""}{fmtDate(it.publishedAt, tenant.timezone)}
                 </p>
                 <PortfolioItemActions id={it.id} visible={it.visible} isFirst={i === 0} isLast={i === items.length - 1} />
               </div>

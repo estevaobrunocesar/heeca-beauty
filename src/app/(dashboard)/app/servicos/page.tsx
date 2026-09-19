@@ -6,47 +6,53 @@ import { requireAuth } from "@/lib/auth/session";
 import { formatCents } from "@/lib/money";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
-import { CATEGORY_ICONS, CATEGORY_LABELS, groupByCategory } from "@/lib/services/categories";
+import { categoryIcon, groupByCategory, UNCATEGORIZED_LABEL } from "@/lib/services/categories";
+import { listCategories } from "@/lib/services/categories-db";
 import { ServiceRowActions } from "./row-actions";
+import { CategoryManager } from "./category-manager";
 
-export const metadata: Metadata = { title: "Procedimentos" };
+export const metadata: Metadata = { title: "Serviços" };
 
 export default async function ServicesPage() {
   const ctx = await requireAuth();
   if (!ctx.isOwner) redirect("/app");
   const { tenant } = ctx;
-  const services = await db.service.findMany({
-    where: { tenantId: tenant.id, deletedAt: null },
-    orderBy: { sortOrder: "asc" },
-  });
+  const [services, categories] = await Promise.all([
+    db.service.findMany({ where: { tenantId: tenant.id, deletedAt: null }, orderBy: { sortOrder: "asc" } }),
+    listCategories(tenant.id),
+  ]);
   const main = services.filter((s) => !s.isAddOn);
   const addOns = services.filter((s) => s.isAddOn);
+  const counts: Record<string, number> = {};
+  for (const s of main) if (s.categoryId) counts[s.categoryId] = (counts[s.categoryId] ?? 0) + 1;
 
   return (
     <>
       <PageHeader
-        title="Procedimentos"
-        description="O que suas clientes podem agendar. A ordem aqui é a ordem da página pública."
+        title="Serviços"
+        description="O que as clientes podem agendar, agrupado por categoria. A ordem aqui é a ordem da página pública."
         actions={
           <>
             <Link href="/app/servicos/novo?tipo=adicional" className="btn-secondary">+ Adicional</Link>
-            <Link href="/app/servicos/novo" className="btn-primary">+ Procedimento</Link>
+            <Link href="/app/servicos/novo" className="btn-primary">+ Serviço</Link>
           </>
         }
       />
 
+      <div className="mb-6"><CategoryManager categories={categories} counts={counts} /></div>
+
       {services.length === 0 ? (
         <EmptyState
-          title="Nenhum procedimento cadastrado"
-          description="Cadastre ao menos um procedimento (ex.: Esmaltação em gel, 1h15, R$ 90) para liberar sua página de agendamento."
-          action={<Link href="/app/servicos/novo" className="btn-primary">Cadastrar primeiro procedimento</Link>}
+          title="Nenhum serviço cadastrado"
+          description="Cadastre ao menos um serviço (ex.: Corte feminino, 45 min, R$ 80) para liberar sua página de agendamento."
+          action={<Link href="/app/servicos/novo" className="btn-primary">Cadastrar primeiro serviço</Link>}
         />
       ) : (
         <div className="space-y-8">
-          {groupByCategory(main).map((group) => (
-            <section key={group.category}>
+          {groupByCategory(main, categories).map((group) => (
+            <section key={group.category?.id ?? "sem-categoria"}>
               <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                <span>{CATEGORY_ICONS[group.category]}</span> {CATEGORY_LABELS[group.category]}
+                <span>{group.category ? categoryIcon(group.category.slug) : "✨"}</span> {group.category?.name ?? UNCATEGORIZED_LABEL}
               </h2>
               <ServiceList items={group.items} all={services} />
             </section>
@@ -84,7 +90,7 @@ function ServiceList({ items, all, addOn }: { items: Row[]; all: Row[]; addOn?: 
               // eslint-disable-next-line @next/next/no-img-element
               <img src={s.imageUrl} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
             ) : (
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-lg">{addOn ? "💎" : "💅"}</div>
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-lg">{addOn ? "💎" : "✨"}</div>
             )}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">

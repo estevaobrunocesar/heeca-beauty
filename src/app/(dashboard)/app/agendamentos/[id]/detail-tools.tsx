@@ -5,8 +5,8 @@ import { rescheduleAction, resendConfirmationAction, updateInternalNotesAction }
 import { SlotPicker } from "@/components/slot-picker";
 import { Alert } from "@/components/ui/alert";
 
-export function DetailTools({ id, slug, durationMinutes, professionalId, todayKey, maxAdvanceDays, internalNotes, canReschedule, canResend }: {
-  id: string; slug: string; durationMinutes: number; professionalId: string; todayKey: string; maxAdvanceDays: number;
+export function DetailTools({ id, slug, todayKey, maxAdvanceDays, internalNotes, canReschedule, canResend }: {
+  id: string; slug: string; todayKey: string; maxAdvanceDays: number;
   internalNotes: string; canReschedule: boolean; canResend: boolean;
 }) {
   const [pending, start] = useTransition();
@@ -36,7 +36,7 @@ export function DetailTools({ id, slug, durationMinutes, professionalId, todayKe
       {showReschedule && (
         <div className="space-y-3 border-t border-zinc-100 pt-4">
           <p className="text-sm text-zinc-600">Escolha o novo horário. A cliente receberá a atualização por WhatsApp.</p>
-          <SlotPicker slug={slug} durationMinutes={durationMinutes} professionalId={professionalId} excludeAppointmentId={id} todayKey={todayKey} maxAdvanceDays={maxAdvanceDays} value={slot} onChange={setSlot} />
+          <SlotPicker slug={slug} excludeAppointmentId={id} todayKey={todayKey} maxAdvanceDays={maxAdvanceDays} value={slot} onChange={setSlot} />
           <button
             className="btn-primary"
             disabled={!slot || pending}

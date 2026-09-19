@@ -2,11 +2,12 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { slugify } from "@/lib/slug";
+import { DEFAULT_CATEGORIES } from "@/lib/services/categories";
 
 /**
  * Bootstrap de um estabelecimento novo — usado pelo cadastro local (actions/auth) e pelo
  * provisionamento do portal Heeca (lib/heeca). Mantém os dois caminhos idênticos:
- * tenant + usuário OWNER + profissional vinculado + agenda inicial (seg–sáb 09–18, almoço 12–13).
+ * tenant + categorias padrão + usuário OWNER + profissional vinculado + agenda inicial (seg–sáb 09–18, almoço 12–13).
  */
 export type BootstrapInput = {
   slug: string;
@@ -41,6 +42,10 @@ export async function bootstrapTenant(tx: Prisma.TransactionClient, input: Boots
   });
   const professional = await tx.professional.create({
     data: { tenantId: tenant.id, userId: user.id, name: input.ownerName },
+  });
+  // Categorias padrão do spec (§7); o salão edita/acrescenta depois.
+  await tx.serviceCategory.createMany({
+    data: DEFAULT_CATEGORIES.map((c, sortOrder) => ({ tenantId: tenant.id, name: c.name, slug: c.slug, sortOrder })),
   });
   await tx.availabilityRule.createMany({
     data: [1, 2, 3, 4, 5, 6].map((weekday) => ({

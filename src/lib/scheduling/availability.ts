@@ -66,8 +66,50 @@ export function clampToDay(range: UtcRange, dateKey: DateKey, tz: string): Minut
 const overlaps = (a: MinuteRange, b: MinuteRange) => a.start < b.end && a.end > b.start;
 
 /**
+ * O dia de UM profissional, já reduzido a minutos: janelas abertas, bloqueios e ocupação.
+ * É a peça que `computeAvailableSlots` (um serviço) e `computeVisitSlots` (vários) compartilham.
+ * `null` = o dia está fechado para novos agendamentos (folga, fora da antecedência, limite diário).
+ */
+export type ProfessionalDay = {
+  windows: MinuteRange[];
+  blocked: MinuteRange[];
+  busy: MinuteRange[]; // agendamentos já com o buffer aplicado
+  maxConcurrent: number;
+};
+
+export function buildProfessionalDay(input: Omit<AvailabilityInput, "durationMinutes" | "slotIntervalMinutes" | "minAdvanceMinutes">): ProfessionalDay | null {
+  const { dateKey, tz, now, bufferMinutes, maxAdvanceDays, maxConcurrent } = input;
+
+  // Antecedência máxima (em dias de calendário no fuso do tenant)
+  const todayKey = toDateKey(now, tz);
+  if (dateKey < todayKey) return null;
+  const lastKey = toDateKey(new Date(now.getTime() + maxAdvanceDays * 86_400_000), tz);
+  if (dateKey > lastKey) return null;
+
+  const windows = openWindows(input.rule, input.exception);
+  if (windows.length === 0) return null;
+
+  const blocked = input.blocks.map((b) => clampToDay(b, dateKey, tz)).filter((r): r is MinuteRange => !!r);
+  const todays = input.appointments.map((a) => clampToDay(a, dateKey, tz)).filter((r): r is MinuteRange => !!r);
+  // Limite diário: atingido = dia fechado para novos agendamentos (ex.: 4 colorações por dia).
+  const limit = input.maxDailyAppointments;
+  if (limit != null && limit > 0 && todays.length >= limit) return null;
+  // Buffer: cada agendamento "ocupa" também o tempo mínimo entre atendimentos.
+  const busy = todays.map((r) => ({ start: r.start - bufferMinutes, end: r.end + bufferMinutes }));
+
+  return { windows, blocked, busy, maxConcurrent };
+}
+
+/** O intervalo cabe inteiro numa janela do profissional, sem bloqueio e sem estourar a concorrência? */
+export function isRangeFree(day: ProfessionalDay, range: MinuteRange): boolean {
+  if (!day.windows.some((w) => range.start >= w.start && range.end <= w.end)) return false;
+  if (day.blocked.some((b) => overlaps(range, b))) return false;
+  return day.busy.filter((b) => overlaps(range, b)).length < day.maxConcurrent;
+}
+
+/**
  * Lista os horários de início possíveis para um serviço em um dia.
- * Regras aplicadas (seção 11 da especificação):
+ * Regras aplicadas (SPEC §9):
  *  - respeita horário de funcionamento, almoço, folgas e horários excepcionais;
  *  - respeita bloqueios e férias;
  *  - considera a duração do serviço e o tempo mínimo entre agendamentos (buffer);
@@ -76,42 +118,112 @@ const overlaps = (a: MinuteRange, b: MinuteRange) => a.start < b.end && a.end > 
  *  - respeita o limite diário de atendimentos (`maxDailyAppointments`), se configurado.
  */
 export function computeAvailableSlots(input: AvailabilityInput): Slot[] {
-  const {
-    dateKey, tz, now, durationMinutes, slotIntervalMinutes, bufferMinutes,
-    minAdvanceMinutes, maxAdvanceDays, maxConcurrent,
-  } = input;
-
-  // Antecedência máxima (em dias de calendário no fuso do tenant)
-  const todayKey = toDateKey(now, tz);
-  if (dateKey < todayKey) return [];
-  const lastKey = toDateKey(new Date(now.getTime() + maxAdvanceDays * 86_400_000), tz);
-  if (dateKey > lastKey) return [];
-
-  const windows = openWindows(input.rule, input.exception);
-  if (windows.length === 0) return [];
-
-  const blocked = input.blocks.map((b) => clampToDay(b, dateKey, tz)).filter((r): r is MinuteRange => !!r);
-  const todays = input.appointments.map((a) => clampToDay(a, dateKey, tz)).filter((r): r is MinuteRange => !!r);
-  // Limite diário: atingido = dia fechado para novos agendamentos (ex.: 4 alongamentos por dia).
-  const limit = input.maxDailyAppointments;
-  if (limit != null && limit > 0 && todays.length >= limit) return [];
-  // Buffer: cada agendamento "ocupa" também o tempo mínimo entre atendimentos.
-  const busy = todays.map((r) => ({ start: r.start - bufferMinutes, end: r.end + bufferMinutes }));
+  const { dateKey, tz, now, durationMinutes, slotIntervalMinutes, minAdvanceMinutes } = input;
+  const day = buildProfessionalDay(input);
+  if (!day) return [];
 
   const earliestStart = new Date(now.getTime() + minAdvanceMinutes * 60_000);
   const step = Math.max(5, slotIntervalMinutes);
   const slots: Slot[] = [];
 
-  for (const w of windows) {
+  for (const w of day.windows) {
     for (let m = w.start; m + durationMinutes <= w.end; m += step) {
-      const candidate: MinuteRange = { start: m, end: m + durationMinutes };
-      if (blocked.some((b) => overlaps(candidate, b))) continue;
-      const concurrent = busy.filter((b) => overlaps(candidate, b)).length;
-      if (concurrent >= maxConcurrent) continue;
+      if (!isRangeFree(day, { start: m, end: m + durationMinutes })) continue;
       const startsAt = zonedDateTimeToUtc(dateKey, m, tz);
       if (startsAt < earliestStart) continue;
       slots.push({ minutes: m, startsAt, endsAt: new Date(startsAt.getTime() + durationMinutes * 60_000) });
     }
+  }
+  return slots;
+}
+
+// ───────────────────────── Visita com vários serviços (SPEC §11) ─────────────────────────
+
+/** Um serviço da visita, ainda sem horário: quem pode fazer e quanto tempo leva. */
+export type VisitItem = {
+  key: string; // identifica o item no resultado (ex.: serviceId ou índice)
+  durationMinutes: number; // serviço + adicionais
+  candidates: string[]; // profissionais habilitados, em ordem de preferência ("qualquer" = todos os habilitados)
+};
+
+/** Onde cada item ficou: profissional escolhido e intervalo em minutos do dia. */
+export type ItemPlacement = { key: string; professionalId: string; start: number; end: number };
+
+export type VisitSlot = { minutes: number; startsAt: Date; endsAt: Date; placements: ItemPlacement[] };
+
+/**
+ * Tenta encaixar todos os itens de uma visita a partir de `startMinutes`.
+ * Devolve a alocação de cada item, ou `null` se a visita não cabe nesse início.
+ *
+ * `isFree(professionalId, range)` responde se aquele profissional está livre no intervalo
+ * (já considera janela, bloqueios, buffer e concorrência — ver `isRangeFree`).
+ *
+ * Esta função decide a REGRA DE SEQUENCIAMENTO da visita, que o spec deixa em aberto:
+ *  - estritamente em sequência (item 2 começa quando o item 1 termina; total = soma das durações,
+ *    como no exemplo "2h15" do SPEC §11);
+ *  - ou permitindo sobreposição quando os profissionais são diferentes (manicure durante a escova),
+ *    o que encurta a visita mas pressupõe que o salão trabalha assim.
+ * Também decide como escolher entre os `candidates` de cada item (primeiro livre? menor carga?).
+ */
+export function placeVisit(
+  startMinutes: number,
+  items: VisitItem[],
+  isFree: (professionalId: string, range: MinuteRange) => boolean,
+): ItemPlacement[] | null {
+  // Regra do MVP: estritamente em sequência (a cliente faz um serviço de cada vez, na ordem
+  // escolhida) e, entre os candidatos, o primeiro que estiver livre. Balanceamento de carga,
+  // quando desejado, é feito pela camada de serviço ordenando `candidates` antes.
+  const placements: ItemPlacement[] = [];
+  let cursor = startMinutes;
+  for (const item of items) {
+    const range: MinuteRange = { start: cursor, end: cursor + item.durationMinutes };
+    const professionalId = item.candidates.find((pid) => isFree(pid, range));
+    if (!professionalId) return null;
+    placements.push({ key: item.key, professionalId, ...range });
+    cursor = range.end;
+  }
+  return placements;
+}
+
+export type VisitAvailabilityInput = {
+  dateKey: DateKey;
+  tz: string;
+  now: Date;
+  items: VisitItem[];
+  days: Map<string, ProfessionalDay | null>; // por professionalId (null = dia fechado)
+  slotIntervalMinutes: number;
+  minAdvanceMinutes: number;
+};
+
+/**
+ * Horários de início em que a visita inteira cabe. Percorre os inícios possíveis
+ * (união das janelas de todos os profissionais candidatos) e delega a `placeVisit`.
+ */
+export function computeVisitSlots(input: VisitAvailabilityInput): VisitSlot[] {
+  const { dateKey, tz, now, items, days } = input;
+  if (items.length === 0) return [];
+
+  const isFree = (professionalId: string, range: MinuteRange) => {
+    const day = days.get(professionalId);
+    return !!day && isRangeFree(day, range);
+  };
+
+  // Inícios candidatos: começo de cada janela de cada profissional do primeiro item, avançando de `step`.
+  const step = Math.max(5, input.slotIntervalMinutes);
+  const starts = new Set<number>();
+  for (const pid of items[0].candidates) {
+    for (const w of days.get(pid)?.windows ?? []) for (let m = w.start; m < w.end; m += step) starts.add(m);
+  }
+
+  const earliestStart = new Date(now.getTime() + input.minAdvanceMinutes * 60_000);
+  const slots: VisitSlot[] = [];
+  for (const m of [...starts].sort((a, b) => a - b)) {
+    const startsAt = zonedDateTimeToUtc(dateKey, m, tz);
+    if (startsAt < earliestStart) continue;
+    const placements = placeVisit(m, items, isFree);
+    if (!placements) continue;
+    const end = Math.max(...placements.map((p) => p.end));
+    slots.push({ minutes: m, startsAt, endsAt: zonedDateTimeToUtc(dateKey, end, tz), placements });
   }
   return slots;
 }

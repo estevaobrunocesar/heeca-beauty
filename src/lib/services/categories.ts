@@ -1,36 +1,69 @@
-import type { ServiceCategory } from "@/generated/prisma/enums";
+/**
+ * Categorias de serviço (SPEC §7). São criadas pelo salão (tabela `ServiceCategory`, por tenant);
+ * aqui ficam só os padrões que o seed/bootstrap instala e os helpers de agrupamento.
+ */
 
-/** Ordem de exibição das categorias na página pública e no painel. */
-export const CATEGORY_ORDER: ServiceCategory[] = ["MANICURE", "PEDICURE", "ALONGAMENTO", "ADICIONAL", "OUTROS"];
+export type CategoryRef = { id: string; name: string; slug: string; sortOrder: number };
 
-export const CATEGORY_LABELS: Record<ServiceCategory, string> = {
-  MANICURE: "Manicure",
-  PEDICURE: "Pedicure",
-  ALONGAMENTO: "Alongamentos",
-  ADICIONAL: "Procedimentos adicionais",
-  OUTROS: "Outros",
-};
+export type DefaultCategory = { slug: string; name: string; icon: string; examples: string[] };
 
-export const CATEGORY_ICONS: Record<ServiceCategory, string> = {
-  MANICURE: "💅",
-  PEDICURE: "🦶",
-  ALONGAMENTO: "✨",
-  ADICIONAL: "💎",
-  OUTROS: "🌸",
-};
+/** As cinco categorias do spec, na ordem de exibição. Ícone é só decoração do painel. */
+export const DEFAULT_CATEGORIES: DefaultCategory[] = [
+  {
+    slug: "cabelo", name: "Cabelo", icon: "💇",
+    examples: ["Corte", "Escova", "Hidratação", "Reconstrução", "Coloração", "Mechas", "Luzes", "Progressiva", "Botox capilar", "Penteado"],
+  },
+  {
+    slug: "unhas", name: "Unhas", icon: "💅",
+    examples: ["Manicure", "Pedicure", "Esmaltação", "Esmaltação em gel", "Alongamento", "Manutenção", "Nail art", "Blindagem"],
+  },
+  {
+    slug: "sobrancelhas", name: "Sobrancelhas", icon: "🪞",
+    examples: ["Design de sobrancelhas", "Henna", "Micropigmentação"],
+  },
+  {
+    slug: "cilios", name: "Cílios", icon: "👁️",
+    examples: ["Extensão de cílios", "Manutenção de cílios", "Lash lifting"],
+  },
+  {
+    slug: "estetica", name: "Estética", icon: "🌿",
+    examples: ["Limpeza de pele", "Massagem", "Drenagem linfática", "Depilação"],
+  },
+];
 
-/** Agrupa preservando a ordem das categorias e a ordem interna dos itens. */
-export function groupByCategory<T extends { category: ServiceCategory }>(items: T[]): { category: ServiceCategory; items: T[] }[] {
-  return CATEGORY_ORDER
-    .map((category) => ({ category, items: items.filter((i) => i.category === category) }))
-    .filter((g) => g.items.length > 0);
+const ICON_BY_SLUG = new Map(DEFAULT_CATEGORIES.map((c) => [c.slug, c.icon]));
+const EXAMPLES_BY_SLUG = new Map(DEFAULT_CATEGORIES.map((c) => [c.slug, c.examples]));
+
+/** Ícone para categorias padrão; categorias criadas pelo salão usam um genérico. */
+export const categoryIcon = (slug: string): string => ICON_BY_SLUG.get(slug) ?? "✨";
+
+/** Sugestões de nome no cadastro de serviço (vazio para categorias personalizadas). */
+export const categoryExamples = (slug: string | null | undefined): string[] => (slug ? EXAMPLES_BY_SLUG.get(slug) ?? [] : []);
+
+/** Slug de URL a partir do nome ("Cílios & Sobrancelhas" → "cilios-sobrancelhas"). */
+export function categorySlug(name: string): string {
+  return name
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "categoria";
 }
 
-/** Exemplos que aparecem como sugestão no cadastro (seção 3.2). */
-export const CATEGORY_EXAMPLES: Record<ServiceCategory, string[]> = {
-  MANICURE: ["Manicure tradicional", "Esmaltação comum", "Esmaltação em gel", "Francesinha", "Nail art", "Remoção de esmaltação"],
-  PEDICURE: ["Pedicure tradicional", "Pedicure com esmaltação em gel", "Spa dos pés", "Esfoliação", "Hidratação dos pés"],
-  ALONGAMENTO: ["Alongamento em fibra de vidro", "Alongamento em gel", "Alongamento em molde F1", "Alongamento acrílico", "Manutenção de alongamento", "Reposição de unha", "Remoção de alongamento"],
-  ADICIONAL: ["Blindagem", "Banho de gel", "Encapsulada", "Nail art personalizada", "Decoração especial", "Reparação de unha quebrada"],
-  OUTROS: [],
-};
+export type CategoryGroup<T> = { category: CategoryRef | null; items: T[] };
+
+/**
+ * Agrupa por categoria preservando a ordem das categorias (sortOrder) e a ordem interna dos itens.
+ * Itens sem categoria (ou de categoria removida) vão para um grupo final `category: null`.
+ */
+export function groupByCategory<T extends { categoryId: string | null }>(items: T[], categories: CategoryRef[]): CategoryGroup<T>[] {
+  const ordered = [...categories].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  const groups: CategoryGroup<T>[] = ordered
+    .map((category) => ({ category, items: items.filter((i) => i.categoryId === category.id) }))
+    .filter((g) => g.items.length > 0);
+  const known = new Set(ordered.map((c) => c.id));
+  const orphans = items.filter((i) => !i.categoryId || !known.has(i.categoryId));
+  if (orphans.length) groups.push({ category: null, items: orphans });
+  return groups;
+}
+
+/** Rótulo do grupo sem categoria. */
+export const UNCATEGORIZED_LABEL = "Outros serviços";

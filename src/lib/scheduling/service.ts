@@ -2,7 +2,10 @@ import "server-only";
 import { db } from "@/lib/db";
 import type { Tenant } from "@/generated/prisma/client";
 import { addDaysToKey, dateKeyToDate, weekdayOfKey, zonedDateTimeToUtc, type DateKey } from "@/lib/dates";
-import { computeAvailableSlots, type DayException, type Slot, type WeeklyRule } from "./availability";
+import {
+  buildProfessionalDay, computeAvailableSlots, computeVisitSlots,
+  type DayException, type ProfessionalDay, type Slot, type VisitItem, type VisitSlot, type WeeklyRule,
+} from "./availability";
 
 /** Status que ocupam horário na agenda. */
 export const ACTIVE_STATUSES = ["PENDING", "AWAITING_PAYMENT", "AWAITING_CONFIRMATION", "CONFIRMED"] as const;
@@ -30,13 +33,14 @@ async function loadContext(professionalId: string, tz: string, fromKey: DateKey,
       where: { professionalId, startsAt: { lt: rangeEnd }, endsAt: { gt: rangeStart } },
       select: { startsAt: true, endsAt: true },
     }),
-    db.appointment.findMany({
+    // O que ocupa a agenda do profissional são os ITENS das visitas ativas (SPEC §11).
+    db.appointmentItem.findMany({
       where: {
         professionalId,
-        status: { in: [...ACTIVE_STATUSES] },
+        appointment: { status: { in: [...ACTIVE_STATUSES] } },
         startsAt: { lt: rangeEnd },
         endsAt: { gt: rangeStart },
-        ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
+        ...(excludeAppointmentId ? { appointmentId: { not: excludeAppointmentId } } : {}),
       },
       select: { startsAt: true, endsAt: true },
     }),
@@ -136,13 +140,7 @@ export async function getAvailableSlotsAny(opts: {
   const perPro = await Promise.all(
     professionalIds.map(async (professionalId) => {
       const slots = await getAvailableSlots({ tenant, professionalId, dateKey, durationMinutes, now });
-      const load = await db.appointment.count({
-        where: {
-          professionalId,
-          status: { in: [...ACTIVE_STATUSES] },
-          startsAt: { gte: zonedDateTimeToUtc(dateKey, 0, tenant.timezone), lt: zonedDateTimeToUtc(addDaysToKey(dateKey, 1), 0, tenant.timezone) },
-        },
-      });
+      const load = await countDailyLoad(professionalId, dateKey, tenant.timezone);
       return { professionalId, slots, load };
     }),
   );
@@ -164,4 +162,109 @@ export async function getDaysWithAvailabilityAny(opts: {
 }): Promise<Set<DateKey>> {
   const sets = await Promise.all(opts.professionalIds.map((professionalId) => getDaysWithAvailability({ ...opts, professionalId })));
   return new Set(sets.flatMap((s) => [...s]));
+}
+
+/** Quantos itens ativos o profissional já tem no dia (para balancear "qualquer profissional"). */
+async function countDailyLoad(professionalId: string, dateKey: DateKey, tz: string): Promise<number> {
+  return db.appointmentItem.count({
+    where: {
+      professionalId,
+      appointment: { status: { in: [...ACTIVE_STATUSES] } },
+      startsAt: { gte: zonedDateTimeToUtc(dateKey, 0, tz), lt: zonedDateTimeToUtc(addDaysToKey(dateKey, 1), 0, tz) },
+    },
+  });
+}
+
+// ───────────────────────── Visita com vários serviços (SPEC §11) ─────────────────────────
+
+/**
+ * Carrega o dia de cada profissional citado nos itens, de uma vez, e monta o `ProfessionalDay`
+ * de cada um para o intervalo [fromKey, toKey]. Devolve um construtor por data, para reuso
+ * no calendário (vários dias) sem repetir as consultas.
+ */
+async function loadVisitContext(opts: {
+  tenant: TenantRules;
+  items: VisitItem[];
+  fromKey: DateKey;
+  toKey: DateKey;
+  now: Date;
+  excludeAppointmentId?: string;
+}) {
+  const { tenant, items, fromKey, toKey, now } = opts;
+  const professionalIds = [...new Set(items.flatMap((i) => i.candidates))];
+  const contexts = await Promise.all(
+    professionalIds.map(async (pid) => [pid, await loadContext(pid, tenant.timezone, fromKey, toKey, opts.excludeAppointmentId)] as const),
+  );
+  return (dateKey: DateKey) => {
+    const days = new Map<string, ProfessionalDay | null>();
+    for (const [pid, ctx] of contexts) {
+      days.set(pid, buildProfessionalDay({
+        dateKey, tz: tenant.timezone, now,
+        rule: ctx.ruleByWeekday.get(weekdayOfKey(dateKey)) ?? null,
+        exception: ctx.exceptionByKey.get(dateKey) ?? null,
+        blocks: ctx.blocks,
+        appointments: ctx.appointments,
+        bufferMinutes: tenant.bufferMinutes,
+        maxAdvanceDays: tenant.maxAdvanceDays,
+        maxConcurrent: tenant.maxConcurrentAppointments,
+        maxDailyAppointments: tenant.maxDailyAppointments,
+      }));
+    }
+    return days;
+  };
+}
+
+/**
+ * Ordena os candidatos de cada item pela carga do dia (menor primeiro), mantendo a ordem
+ * original como desempate. `placeVisit` pega o primeiro livre, então isso distribui a equipe.
+ */
+async function balanceCandidates(items: VisitItem[], dateKey: DateKey, tz: string): Promise<VisitItem[]> {
+  const ids = [...new Set(items.flatMap((i) => i.candidates))];
+  const load = new Map(await Promise.all(ids.map(async (pid) => [pid, await countDailyLoad(pid, dateKey, tz)] as const)));
+  return items.map((item) =>
+    item.candidates.length <= 1
+      ? item
+      : { ...item, candidates: [...item.candidates].sort((a, b) => (load.get(a) ?? 0) - (load.get(b) ?? 0)) },
+  );
+}
+
+/** Horários em que a visita inteira (todos os itens, em sequência) cabe no dia. */
+export async function getVisitSlots(opts: {
+  tenant: TenantRules;
+  items: VisitItem[];
+  dateKey: DateKey;
+  now?: Date;
+  excludeAppointmentId?: string; // reagendamento: ignora os itens da própria visita
+}): Promise<VisitSlot[]> {
+  const { tenant, dateKey } = opts;
+  const now = opts.now ?? new Date();
+  const items = await balanceCandidates(opts.items, dateKey, tenant.timezone);
+  const daysFor = await loadVisitContext({ tenant, items, fromKey: dateKey, toKey: dateKey, now, excludeAppointmentId: opts.excludeAppointmentId });
+  return computeVisitSlots({
+    dateKey, tz: tenant.timezone, now, items, days: daysFor(dateKey),
+    slotIntervalMinutes: tenant.slotIntervalMinutes,
+    minAdvanceMinutes: tenant.minAdvanceMinutes,
+  });
+}
+
+/** Para o calendário público: dias do intervalo em que a visita cabe ao menos uma vez. */
+export async function getDaysWithVisitAvailability(opts: {
+  tenant: TenantRules;
+  items: VisitItem[];
+  fromKey: DateKey;
+  toKey: DateKey;
+}): Promise<Set<DateKey>> {
+  const { tenant, items, fromKey, toKey } = opts;
+  const now = new Date();
+  const daysFor = await loadVisitContext({ tenant, items, fromKey, toKey, now });
+  const result = new Set<DateKey>();
+  for (let key = fromKey; key <= toKey; key = addDaysToKey(key, 1)) {
+    const slots = computeVisitSlots({
+      dateKey: key, tz: tenant.timezone, now, items, days: daysFor(key),
+      slotIntervalMinutes: tenant.slotIntervalMinutes,
+      minAdvanceMinutes: tenant.minAdvanceMinutes,
+    });
+    if (slots.length > 0) result.add(key);
+  }
+  return result;
 }

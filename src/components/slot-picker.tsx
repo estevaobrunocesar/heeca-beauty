@@ -5,13 +5,17 @@ import { addDays, addMonths, endOfMonth, format, getDaysInMonth, parse, startOfM
 import { ptBR } from "date-fns/locale";
 import { minutesToHHMM, ucfirst } from "@/lib/dates";
 
+/** Um serviço da visita (SPEC §11). `professionalId` null = qualquer profissional habilitado. */
+export type SlotPickerItem = { serviceId: string; professionalId?: string | null; addOnIds?: string[] };
+
 type Props = {
   slug: string;
+  /** Visita com vários serviços. Tem precedência sobre serviceId/addOnIds/professionalId. */
+  items?: SlotPickerItem[];
   serviceId?: string;
   addOnIds?: string[]; // adicionais escolhidos (somam à duração)
-  durationMinutes?: number;
-  excludeAppointmentId?: string;
-  professionalId?: string | null; // null/undefined = qualquer profissional
+  excludeAppointmentId?: string; // reagendamento: os itens vêm do próprio agendamento
+  professionalId?: string | null; // null/undefined = qualquer profissional| null; // null/undefined = qualquer profissional
   todayKey: string; // no fuso do tenant, calculado no servidor
   maxAdvanceDays: number;
   value?: { dateKey: string; minutes: number } | null;
@@ -22,8 +26,10 @@ type Props = {
  * Calendário mensal + lista de horários. Consulta a API pública de disponibilidade,
  * que usa exatamente a mesma função de cálculo usada na validação do agendamento.
  */
-export function SlotPicker({ slug, serviceId, addOnIds, durationMinutes, excludeAppointmentId, professionalId, todayKey, maxAdvanceDays, value, onChange }: Props) {
+export function SlotPicker({ slug, items, serviceId, addOnIds, excludeAppointmentId, professionalId, todayKey, maxAdvanceDays, value, onChange }: Props) {
   const addOnsKey = addOnIds?.join(",") ?? "";
+  // Serializado para entrar na chave de cache e no efeito sem depender da identidade do array.
+  const itemsJson = items ? JSON.stringify(items.map((i) => ({ serviceId: i.serviceId, professionalId: i.professionalId ?? null, addOnIds: i.addOnIds ?? [] }))) : "";
   const [month, setMonth] = useState(() => startOfMonth(parse(value?.dateKey ?? todayKey, "yyyy-MM-dd", new Date())));
   const [selectedDay, setSelectedDay] = useState<string | null>(value?.dateKey ?? null);
   // Cache keyed pelo que foi consultado: "carregando" = a chave atual ainda não está no cache.
@@ -35,13 +41,15 @@ export function SlotPicker({ slug, serviceId, addOnIds, durationMinutes, exclude
 
   const baseQuery = useMemo(() => {
     const p = new URLSearchParams();
-    if (serviceId) p.set("serviceId", serviceId);
-    else if (durationMinutes) p.set("duration", String(durationMinutes));
-    if (addOnsKey) p.set("addOns", addOnsKey);
     if (excludeAppointmentId) p.set("exclude", excludeAppointmentId);
-    if (professionalId) p.set("professionalId", professionalId);
+    else if (itemsJson) p.set("items", itemsJson);
+    else {
+      if (serviceId) p.set("serviceId", serviceId);
+      if (addOnsKey) p.set("addOns", addOnsKey);
+      if (professionalId) p.set("professionalId", professionalId);
+    }
     return p;
-  }, [serviceId, addOnsKey, durationMinutes, excludeAppointmentId, professionalId]);
+  }, [itemsJson, serviceId, addOnsKey, excludeAppointmentId, professionalId]);
 
   const daysKey = `${monthKey}|${baseQuery}`;
   const slotsKey = selectedDay ? `${selectedDay}|${baseQuery}` : null;

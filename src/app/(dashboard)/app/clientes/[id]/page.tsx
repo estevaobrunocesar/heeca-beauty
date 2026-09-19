@@ -8,7 +8,7 @@ import { formatPhone, whatsappLink } from "@/lib/phone";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ACTIVE_STATUSES } from "@/lib/appointments/status";
 import { averageIntervalDays, isRecurring, maintenanceStatus } from "@/lib/clients/insights";
-import { describeBooking } from "@/lib/services/addons";
+import { describeVisit } from "@/lib/appointments/summary";
 import { ClientForm } from "./client-form";
 
 export default async function ClientDetailPage({ params }: PageProps<"/app/clientes/[id]">) {
@@ -16,7 +16,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
   const { tenant } = await requireAuth();
   const client = await db.client.findFirst({
     where: { id, tenantId: tenant.id },
-    include: { appointments: { orderBy: { startsAt: "desc" }, take: 50, include: { addOns: { select: { name: true } } } } },
+    include: { appointments: { orderBy: { startsAt: "desc" }, take: 50, include: { items: { orderBy: { sortOrder: "asc" }, select: { serviceName: true } } } } },
   });
   if (!client) notFound();
 
@@ -31,9 +31,9 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
   const maintenance = maintenanceStatus({ lastCompletedAt: lastVisit, intervalDays: client.maintenanceIntervalDays, observedIntervalDays: observed, hasUpcoming, now });
   const recurring = isRecurring(completedDates, now);
 
-  // Procedimentos realizados (contagem por nome)
+  // Serviços realizados (contagem por item, não por visita)
   const byService = new Map<string, number>();
-  for (const a of completed) byService.set(a.serviceName, (byService.get(a.serviceName) ?? 0) + 1);
+  for (const a of completed) for (const it of a.items) byService.set(it.serviceName, (byService.get(it.serviceName) ?? 0) + 1);
   const topServices = [...byService.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
 
   return (
@@ -90,7 +90,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
                 {client.appointments.map((a) => (
                   <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                     <Link href={`/app/agendamentos/${a.id}`} className="hover:underline">
-                      <span className="font-medium">{fmtDateTime(a.startsAt, tenant.timezone)}</span> · {describeBooking(a.serviceName, a.addOns.map((x) => x.name))} · {formatCents(a.priceCents)}
+                      <span className="font-medium">{fmtDateTime(a.startsAt, tenant.timezone)}</span> · {describeVisit(a.items)} · {formatCents(a.priceCents)}
                     </Link>
                     <StatusBadge status={a.status} />
                   </li>

@@ -67,9 +67,11 @@ model Tenant {
 
   users             User[]
   professionals     Professional[]
+  categories        ServiceCategory[]
   services          Service[]
   clients           Client[]
   appointments      Appointment[]
+  appointmentItems  AppointmentItem[]
   availability      AvailabilityRule[]
   exceptions        ScheduleException[]
   blocks            ScheduleBlock[]
@@ -119,45 +121,64 @@ model PasswordResetToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// Quem atende. Um estabelecimento pode ter vários (equipe).
+// Quem atende. Um salão tem vários (equipe), cada um com a própria agenda (SPEC §5).
 model Professional {
-  id        String   @id @default(cuid())
-  tenantId  String
-  userId    String?  @unique
-  name      String
-  photoUrl  String?
-  bio       String?
-  active    Boolean  @default(true)
-  sortOrder Int      @default(0)
+  id          String   @id @default(cuid())
+  tenantId    String
+  userId      String?  @unique
+  name        String
+  photoUrl    String?
+  bio         String?
+  phone       String? // E.164
+  email       String?
+  specialties String? // texto livre: "Cabeleireira, colorista"
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+
+  // Comissão padrão do profissional (SPEC §17). Pode ser sobrescrita por serviço em ProfessionalService.
+  // null = não comissionado (ex.: dono do salão). Percentual inteiro 0..100.
+  commissionPercent Int?
+
   createdAt DateTime @default(now())
 
   tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user         User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
-  appointments Appointment[]
-  availability AvailabilityRule[]
-  exceptions   ScheduleException[]
-  blocks       ScheduleBlock[]
-  services     ProfessionalService[]
+  items            AppointmentItem[]
+  availability     AvailabilityRule[]
+  exceptions       ScheduleException[]
+  blocks           ScheduleBlock[]
+  services         ProfessionalService[]
+  preferredByClients Client[]            @relation("ClientPreferredProfessional")
 
   @@index([tenantId])
 }
 
 // ───────────────────────── Serviços ─────────────────────────
 
-// Categorias do segmento (seção 3.2). Agrupam a lista na página pública.
-enum ServiceCategory {
-  MANICURE
-  PEDICURE
-  ALONGAMENTO
-  ADICIONAL // blindagem, banho de gel, encapsulada, nail art…
-  OUTROS
+// Categorias criadas pelo salão (SPEC §7). O seed cria as cinco padrão
+// (Cabelo, Unhas, Sobrancelhas, Cílios, Estética); o salão edita e acrescenta.
+model ServiceCategory {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  slug      String // estável para URLs/âncoras na página pública
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  services  Service[]
+  portfolio PortfolioItem[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, sortOrder])
 }
 
 model Service {
   id              String          @id @default(cuid())
   tenantId        String
+  categoryId      String?
   name            String
-  category        ServiceCategory @default(OUTROS)
   description     String?
   clientNotes     String? // observações importantes para a cliente (ex.: "vir sem esmalte")
   durationMinutes Int
@@ -173,32 +194,39 @@ model Service {
   updatedAt       DateTime        @updatedAt
 
   tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  appointments  Appointment[]
+  category      ServiceCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  items         AppointmentItem[]
   addOnUsages   AppointmentAddOn[]
   professionals ProfessionalService[]
 
   @@index([tenantId, active, sortOrder])
+  @@index([tenantId, categoryId])
 }
 
-// Adicionais escolhidos em um agendamento, com snapshot de nome/tempo/preço.
+// Adicionais escolhidos junto de um serviço da visita, com snapshot de nome/tempo/preço.
+// Somam ao durationMinutes/priceCents do AppointmentItem a que pertencem.
 model AppointmentAddOn {
   id              String @id @default(cuid())
-  appointmentId   String
+  itemId          String
   serviceId       String
   name            String
   durationMinutes Int
   priceCents      Int
 
-  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  service     Service     @relation(fields: [serviceId], references: [id])
+  item    AppointmentItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  service Service         @relation(fields: [serviceId], references: [id])
 
-  @@index([appointmentId])
+  @@index([itemId])
 }
 
 // Quais serviços cada profissional executa (N:N).
 model ProfessionalService {
   professionalId String
   serviceId      String
+
+  // Comissão específica deste par (SPEC §17). null = usa Professional.commissionPercent.
+  commissionPercent    Int? // 0..100
+  commissionFixedCents Int? // valor fixo por execução; tem precedência sobre o percentual
 
   professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
   service      Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
@@ -281,20 +309,24 @@ model Client {
   name     String
   phone    String // E.164, ex.: +5511999998888
   email    String?
-  notes    String? // observações internas do profissional
+  notes    String? // observações administrativas (SPEC §12)
 
-  // Preferências (seção 11): ficha técnica que a Nail Designer consulta antes do atendimento
+  birthDate               DateTime? @db.Date // aniversário → campanha (SPEC §13)
+  preferredProfessionalId String?
+
+  // Ficha técnica (herdada do Nail; útil para unhas, ainda faz sentido em salão completo)
   nailShape               String? // almond, quadrado, stiletto, bailarina…
   nailSize                String? // curto, médio, longo (ou numeração do molde)
   allergies               String? // produtos a evitar
-  maintenanceIntervalDays Int? // "costuma fazer manutenção a cada 20 dias"
+  maintenanceIntervalDays Int? // "costuma voltar a cada 20 dias" → base da lista de reativação (SPEC §14)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  appointments Appointment[]
-  messages     WhatsappMessage[]
+  tenant                Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  preferredProfessional Professional?     @relation("ClientPreferredProfessional", fields: [preferredProfessionalId], references: [id], onDelete: SetNull)
+  appointments          Appointment[]
+  messages              WhatsappMessage[]
 
   @@unique([tenantId, phone])
   @@index([tenantId, name])
@@ -319,25 +351,27 @@ enum AppointmentSource {
   DASHBOARD // criado pelo profissional
 }
 
+// A VISITA da cliente ao salão (SPEC §11): um status, uma confirmação, um pagamento,
+// e um ou mais serviços (AppointmentItem), cada um com o próprio profissional e horário.
+// startsAt/endsAt são o envelope dos itens (menor início, maior fim) — é o que a agenda,
+// os lembretes e a expiração consultam, sem precisar juntar os itens.
 model Appointment {
-  id             String            @id @default(cuid())
-  tenantId       String
-  professionalId String
-  serviceId      String
-  clientId       String
-  startsAt       DateTime
-  endsAt         DateTime
-  status         AppointmentStatus @default(PENDING)
-  source         AppointmentSource @default(PUBLIC)
+  id       String            @id @default(cuid())
+  tenantId String
+  clientId String
+  startsAt DateTime
+  endsAt   DateTime
+  status   AppointmentStatus @default(PENDING)
+  source   AppointmentSource @default(PUBLIC)
 
-  // Snapshot do serviço no momento do agendamento.
-  // durationMinutes e priceCents são TOTAIS (procedimento principal + adicionais).
+  // Resumo para mensagens e listagens ("Corte + Escova + Manicure").
+  // durationMinutes e priceCents são TOTAIS de todos os itens (com adicionais).
   serviceName     String
   durationMinutes Int
   priceCents      Int
 
   notes             String? // observação do cliente
-  internalNotes     String? // anotações do profissional
+  internalNotes     String? // anotações do salão
   confirmationToken String    @unique
   confirmedAt       DateTime?
   cancelledAt       DateTime?
@@ -348,19 +382,50 @@ model Appointment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  professional Professional       @relation(fields: [professionalId], references: [id])
-  service      Service            @relation(fields: [serviceId], references: [id])
-  client       Client             @relation(fields: [clientId], references: [id])
-  events       AppointmentEvent[]
-  messages     WhatsappMessage[]
-  payment      Payment?
-  addOns       AppointmentAddOn[]
+  tenant   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client   Client             @relation(fields: [clientId], references: [id])
+  items    AppointmentItem[]
+  events   AppointmentEvent[]
+  messages WhatsappMessage[]
+  payment  Payment?
 
   @@index([tenantId, startsAt])
-  @@index([professionalId, startsAt, status])
+  @@index([clientId, startsAt])
   @@index([status, expiresAt])
   @@index([status, startsAt, reminderSentAt])
+}
+
+// Um serviço dentro da visita. É o que ocupa a agenda de UM profissional e o que gera comissão.
+// Adicionais escolhidos junto entram no snapshot de duração/preço deste item.
+model AppointmentItem {
+  id             String   @id @default(cuid())
+  tenantId       String
+  appointmentId  String
+  professionalId String
+  serviceId      String
+  startsAt       DateTime
+  endsAt         DateTime
+  sortOrder      Int      @default(0) // ordem em que a cliente faz os serviços
+
+  // Snapshot no momento do agendamento (serviço + adicionais)
+  serviceName     String
+  durationMinutes Int
+  priceCents      Int
+
+  // Comissão apurada quando a visita é concluída (SPEC §17). null = ainda não apurada / não comissionado.
+  commissionCents Int?
+
+  createdAt DateTime @default(now())
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointment  Appointment        @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  professional Professional       @relation(fields: [professionalId], references: [id])
+  service      Service            @relation(fields: [serviceId], references: [id])
+  addOns       AppointmentAddOn[]
+
+  @@index([appointmentId, sortOrder])
+  @@index([professionalId, startsAt, endsAt])
+  @@index([tenantId, startsAt])
 }
 
 enum AppointmentActor {
@@ -488,16 +553,17 @@ model PortfolioItem {
   id          String           @id @default(cuid())
   tenantId    String
   imageUrl    String
-  title       String // nome do procedimento (ex.: "Alongamento almond em fibra")
+  title       String // nome do trabalho (ex.: "Mechas loiras", "Alongamento almond em fibra")
   description String?
-  category    ServiceCategory?
+  categoryId  String?
   visible     Boolean          @default(true)
   sortOrder   Int              @default(0)
   publishedAt DateTime         @default(now())
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, visible, sortOrder])
 }

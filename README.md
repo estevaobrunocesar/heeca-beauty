@@ -24,8 +24,8 @@ npm run db:seed               # salão de exemplo (logins abaixo)
 npm run dev
 ```
 
-- Painel: http://localhost:3000/app — `demo@heeca.app / demo1234` (responsável) · `bia@heeca.app / bia12345` (STAFF)
-- Página pública de exemplo: http://localhost:3000/agendar/<slug-do-seed>
+- Painel: http://localhost:3000/app — `demo@heeca.app / demo1234` (responsável) · `mariana@heeca.app / mari1234` (STAFF)
+- Página pública de exemplo: http://localhost:3000/agendar/salao-bela-vista
 - Em dev as mensagens de WhatsApp aparecem no terminal do `npm run dev`, com o link de confirmação (`/confirmar/<token>`).
 
 Outros comandos: `npm test`, `npm run lint`, `npm run db:studio`.

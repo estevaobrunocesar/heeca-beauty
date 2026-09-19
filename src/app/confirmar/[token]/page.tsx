@@ -8,7 +8,7 @@ import { fmtDate, fmtTime } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { policyItems } from "@/lib/policies";
-import { describeBooking } from "@/lib/services/addons";
+import { describeProfessionals, describeVisit } from "@/lib/appointments/summary";
 import { ConfirmButtons } from "./confirm-buttons";
 
 export const metadata: Metadata = { title: "Confirmar agendamento" };
@@ -17,9 +17,7 @@ export default async function ConfirmPage({ params, searchParams }: PageProps<"/
   const { token } = await params;
   const sp = await searchParams;
   const appt = await findByToken(token);
-  const [payment, addOns] = appt
-    ? await Promise.all([db.payment.findUnique({ where: { appointmentId: appt.id } }), db.appointmentAddOn.findMany({ where: { appointmentId: appt.id }, select: { name: true } })])
-    : [null, []];
+  const payment = appt ? await db.payment.findUnique({ where: { appointmentId: appt.id } }) : null;
 
   if (!appt) {
     return (
@@ -34,7 +32,7 @@ export default async function ConfirmPage({ params, searchParams }: PageProps<"/
   const isActive = ACTIVE_STATUSES.includes(appt.status);
   const cancelPolicy = canClientCancel(appt.tenant, appt);
   const flash =
-    sp.ok === "confirmado" ? "Horário confirmado! Estamos te esperando. 💅"
+    sp.ok === "confirmado" ? "Horário confirmado! Estamos te esperando. 💜"
     : sp.ok === "cancelado" ? "Agendamento cancelado."
     : sp.ok === "remarcar" ? "Pedido enviado! A profissional vai entrar em contato pelo WhatsApp para combinar um novo horário."
     : null;
@@ -43,11 +41,16 @@ export default async function ConfirmPage({ params, searchParams }: PageProps<"/
   return (
     <Shell>
       <p className="text-sm text-zinc-500">{appt.tenant.businessName}</p>
-      <h1 className="mt-1 text-xl font-semibold">{describeBooking(appt.serviceName, addOns.map((a) => a.name))}</h1>
+      <h1 className="mt-1 text-xl font-semibold">{describeVisit(appt.items)}</h1>
       <div className="mt-4 space-y-1 rounded-xl bg-zinc-50 p-4 text-sm">
         <p><span className="text-zinc-500">Cliente:</span> {appt.client.name}</p>
-        <p><span className="text-zinc-500">Profissional:</span> {appt.professional.name}</p>
+        <p><span className="text-zinc-500">{appt.items.length > 1 ? "Profissionais" : "Profissional"}:</span> {describeProfessionals(appt.items)}</p>
         <p><span className="text-zinc-500">Data:</span> {fmtDate(appt.startsAt, tz)} às {fmtTime(appt.startsAt, tz)}</p>
+        {appt.items.length > 1 && (
+          <ul className="ml-4 list-disc text-zinc-600">
+            {appt.items.map((it) => <li key={it.id}>{fmtTime(it.startsAt, tz)} · {it.serviceName} · {it.professional.name}</li>)}
+          </ul>
+        )}
         <p><span className="text-zinc-500">Valor:</span> {formatCents(appt.priceCents)}</p>
         <p className="pt-1"><StatusBadge status={appt.status} /></p>
       </div>

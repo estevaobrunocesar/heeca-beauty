@@ -1,11 +1,11 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "DepositMode" AS ENUM ('NONE', 'PERCENT', 'FIXED');
 
 -- CreateEnum
 CREATE TYPE "UserRole" AS ENUM ('OWNER', 'STAFF');
-
--- CreateEnum
-CREATE TYPE "ServiceCategory" AS ENUM ('MANICURE', 'PEDICURE', 'ALONGAMENTO', 'ADICIONAL', 'OUTROS');
 
 -- CreateEnum
 CREATE TYPE "ScheduleExceptionKind" AS ENUM ('CLOSED', 'CUSTOM_HOURS');
@@ -69,6 +69,12 @@ CREATE TABLE "Tenant" (
     "depositTimeoutMinutes" INTEGER NOT NULL DEFAULT 30,
     "pixProvider" TEXT,
     "pixCredentialsEnc" TEXT,
+    "heecaSubscriptionId" TEXT,
+    "heecaAccountId" TEXT,
+    "heecaPlan" TEXT,
+    "heecaStatus" TEXT,
+    "heecaBlocked" BOOLEAN NOT NULL DEFAULT false,
+    "heecaSyncedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -109,19 +115,36 @@ CREATE TABLE "Professional" (
     "name" TEXT NOT NULL,
     "photoUrl" TEXT,
     "bio" TEXT,
+    "phone" TEXT,
+    "email" TEXT,
+    "specialties" TEXT,
     "active" BOOLEAN NOT NULL DEFAULT true,
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "commissionPercent" INTEGER,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Professional_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "Service" (
+CREATE TABLE "ServiceCategory" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
-    "category" "ServiceCategory" NOT NULL DEFAULT 'OUTROS',
+    "slug" TEXT NOT NULL,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ServiceCategory_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Service" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "categoryId" TEXT,
+    "name" TEXT NOT NULL,
     "description" TEXT,
     "clientNotes" TEXT,
     "durationMinutes" INTEGER NOT NULL,
@@ -140,7 +163,7 @@ CREATE TABLE "Service" (
 -- CreateTable
 CREATE TABLE "AppointmentAddOn" (
     "id" TEXT NOT NULL,
-    "appointmentId" TEXT NOT NULL,
+    "itemId" TEXT NOT NULL,
     "serviceId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "durationMinutes" INTEGER NOT NULL,
@@ -153,6 +176,8 @@ CREATE TABLE "AppointmentAddOn" (
 CREATE TABLE "ProfessionalService" (
     "professionalId" TEXT NOT NULL,
     "serviceId" TEXT NOT NULL,
+    "commissionPercent" INTEGER,
+    "commissionFixedCents" INTEGER,
 
     CONSTRAINT "ProfessionalService_pkey" PRIMARY KEY ("professionalId","serviceId")
 );
@@ -208,6 +233,8 @@ CREATE TABLE "Client" (
     "phone" TEXT NOT NULL,
     "email" TEXT,
     "notes" TEXT,
+    "birthDate" DATE,
+    "preferredProfessionalId" TEXT,
     "nailShape" TEXT,
     "nailSize" TEXT,
     "allergies" TEXT,
@@ -222,8 +249,6 @@ CREATE TABLE "Client" (
 CREATE TABLE "Appointment" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
-    "professionalId" TEXT NOT NULL,
-    "serviceId" TEXT NOT NULL,
     "clientId" TEXT NOT NULL,
     "startsAt" TIMESTAMP(3) NOT NULL,
     "endsAt" TIMESTAMP(3) NOT NULL,
@@ -244,6 +269,25 @@ CREATE TABLE "Appointment" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Appointment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "AppointmentItem" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "appointmentId" TEXT NOT NULL,
+    "professionalId" TEXT NOT NULL,
+    "serviceId" TEXT NOT NULL,
+    "startsAt" TIMESTAMP(3) NOT NULL,
+    "endsAt" TIMESTAMP(3) NOT NULL,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "serviceName" TEXT NOT NULL,
+    "durationMinutes" INTEGER NOT NULL,
+    "priceCents" INTEGER NOT NULL,
+    "commissionCents" INTEGER,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "AppointmentItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -317,7 +361,7 @@ CREATE TABLE "PortfolioItem" (
     "imageUrl" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "description" TEXT,
-    "category" "ServiceCategory",
+    "categoryId" TEXT,
     "visible" BOOLEAN NOT NULL DEFAULT true,
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
     "publishedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -329,6 +373,9 @@ CREATE TABLE "PortfolioItem" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Tenant_slug_key" ON "Tenant"("slug");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Tenant_heecaSubscriptionId_key" ON "Tenant"("heecaSubscriptionId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
@@ -346,10 +393,19 @@ CREATE UNIQUE INDEX "Professional_userId_key" ON "Professional"("userId");
 CREATE INDEX "Professional_tenantId_idx" ON "Professional"("tenantId");
 
 -- CreateIndex
+CREATE INDEX "ServiceCategory_tenantId_sortOrder_idx" ON "ServiceCategory"("tenantId", "sortOrder");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ServiceCategory_tenantId_slug_key" ON "ServiceCategory"("tenantId", "slug");
+
+-- CreateIndex
 CREATE INDEX "Service_tenantId_active_sortOrder_idx" ON "Service"("tenantId", "active", "sortOrder");
 
 -- CreateIndex
-CREATE INDEX "AppointmentAddOn_appointmentId_idx" ON "AppointmentAddOn"("appointmentId");
+CREATE INDEX "Service_tenantId_categoryId_idx" ON "Service"("tenantId", "categoryId");
+
+-- CreateIndex
+CREATE INDEX "AppointmentAddOn_itemId_idx" ON "AppointmentAddOn"("itemId");
 
 -- CreateIndex
 CREATE INDEX "ProfessionalService_serviceId_idx" ON "ProfessionalService"("serviceId");
@@ -382,13 +438,22 @@ CREATE UNIQUE INDEX "Appointment_confirmationToken_key" ON "Appointment"("confir
 CREATE INDEX "Appointment_tenantId_startsAt_idx" ON "Appointment"("tenantId", "startsAt");
 
 -- CreateIndex
-CREATE INDEX "Appointment_professionalId_startsAt_status_idx" ON "Appointment"("professionalId", "startsAt", "status");
+CREATE INDEX "Appointment_clientId_startsAt_idx" ON "Appointment"("clientId", "startsAt");
 
 -- CreateIndex
 CREATE INDEX "Appointment_status_expiresAt_idx" ON "Appointment"("status", "expiresAt");
 
 -- CreateIndex
 CREATE INDEX "Appointment_status_startsAt_reminderSentAt_idx" ON "Appointment"("status", "startsAt", "reminderSentAt");
+
+-- CreateIndex
+CREATE INDEX "AppointmentItem_appointmentId_sortOrder_idx" ON "AppointmentItem"("appointmentId", "sortOrder");
+
+-- CreateIndex
+CREATE INDEX "AppointmentItem_professionalId_startsAt_endsAt_idx" ON "AppointmentItem"("professionalId", "startsAt", "endsAt");
+
+-- CreateIndex
+CREATE INDEX "AppointmentItem_tenantId_startsAt_idx" ON "AppointmentItem"("tenantId", "startsAt");
 
 -- CreateIndex
 CREATE INDEX "AppointmentEvent_appointmentId_createdAt_idx" ON "AppointmentEvent"("appointmentId", "createdAt");
@@ -427,10 +492,16 @@ ALTER TABLE "Professional" ADD CONSTRAINT "Professional_tenantId_fkey" FOREIGN K
 ALTER TABLE "Professional" ADD CONSTRAINT "Professional_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "ServiceCategory" ADD CONSTRAINT "ServiceCategory_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Service" ADD CONSTRAINT "Service_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "AppointmentAddOn" ADD CONSTRAINT "AppointmentAddOn_appointmentId_fkey" FOREIGN KEY ("appointmentId") REFERENCES "Appointment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Service" ADD CONSTRAINT "Service_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "ServiceCategory"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AppointmentAddOn" ADD CONSTRAINT "AppointmentAddOn_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "AppointmentItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "AppointmentAddOn" ADD CONSTRAINT "AppointmentAddOn_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "Service"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -463,16 +534,25 @@ ALTER TABLE "ScheduleBlock" ADD CONSTRAINT "ScheduleBlock_professionalId_fkey" F
 ALTER TABLE "Client" ADD CONSTRAINT "Client_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Client" ADD CONSTRAINT "Client_preferredProfessionalId_fkey" FOREIGN KEY ("preferredProfessionalId") REFERENCES "Professional"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_professionalId_fkey" FOREIGN KEY ("professionalId") REFERENCES "Professional"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "Service"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AppointmentItem" ADD CONSTRAINT "AppointmentItem_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AppointmentItem" ADD CONSTRAINT "AppointmentItem_appointmentId_fkey" FOREIGN KEY ("appointmentId") REFERENCES "Appointment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AppointmentItem" ADD CONSTRAINT "AppointmentItem_professionalId_fkey" FOREIGN KEY ("professionalId") REFERENCES "Professional"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AppointmentItem" ADD CONSTRAINT "AppointmentItem_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "Service"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "AppointmentEvent" ADD CONSTRAINT "AppointmentEvent_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -500,3 +580,7 @@ ALTER TABLE "Payment" ADD CONSTRAINT "Payment_appointmentId_fkey" FOREIGN KEY ("
 
 -- AddForeignKey
 ALTER TABLE "PortfolioItem" ADD CONSTRAINT "PortfolioItem_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PortfolioItem" ADD CONSTRAINT "PortfolioItem_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "ServiceCategory"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+

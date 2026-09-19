@@ -10,6 +10,8 @@ import { AppointmentCard } from "@/components/dashboard/appointment-card";
 import { Alert } from "@/components/ui/alert";
 import { getAvailableSlots } from "@/lib/scheduling/service";
 import { isRecurring, maintenanceStatus, averageIntervalDays } from "@/lib/clients/insights";
+import { cardInclude, withProfessionals } from "@/lib/appointments/queries";
+import { describeProfessionals } from "@/lib/appointments/summary";
 
 export default async function DashboardHome({ searchParams }: PageProps<"/app">) {
   const sp = await searchParams;
@@ -17,7 +19,7 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
   const { tenant } = ctx;
   // STAFF vê só a própria agenda; OWNER vê toda a equipe.
   const proIds = ctx.professionals.map((p) => p.id);
-  const scope = { tenantId: tenant.id, professionalId: { in: proIds } };
+  const scope = { tenantId: tenant.id, ...withProfessionals(proIds) };
   const showPro = ctx.professionals.length > 1;
   const tz = tenant.timezone;
   const today = todayKey(tz);
@@ -31,12 +33,12 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
   const [todayList, upcoming, pendingCount, monthStats, forecast, topServices, clientsCount, servicesCount, cancelledMonth, recentCompleted, freeSlots] = await Promise.all([
     db.appointment.findMany({
       where: { ...scope, startsAt: { gte: dayStart, lt: dayEnd } },
-      include: { client: true, professional: { select: { name: true, photoUrl: true } }, addOns: { select: { name: true } } },
+      include: cardInclude,
       orderBy: { startsAt: "asc" },
     }),
     db.appointment.findMany({
       where: { ...scope, startsAt: { gte: dayEnd, lte: in30 }, status: { in: ACTIVE_STATUSES } },
-      include: { client: true, professional: { select: { name: true } } }, orderBy: { startsAt: "asc" }, take: 8,
+      include: cardInclude, orderBy: { startsAt: "asc" }, take: 8,
     }),
     db.appointment.count({ where: { ...scope, status: { in: ["PENDING", "AWAITING_PAYMENT", "AWAITING_CONFIRMATION", "RESCHEDULE_REQUESTED"] }, startsAt: { gte: now } } }),
     db.appointment.aggregate({ where: { ...scope, status: "COMPLETED", startsAt: { gte: monthStart } }, _count: true, _sum: { priceCents: true } }),
@@ -130,7 +132,7 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
                 </p>
                 <Link href={`/app/agendamentos/${next.id}`} className="text-sm text-brand-700 hover:underline">Ver detalhes →</Link>
               </div>
-              <p className="text-sm text-zinc-600">{next.serviceName} · {next.durationMinutes} min · {formatCents(next.priceCents)}{showPro && next.professional ? ` · ${next.professional.name}` : ""}</p>
+              <p className="text-sm text-zinc-600">{next.serviceName} · {next.durationMinutes} min · {formatCents(next.priceCents)}{showPro ? ` · ${describeProfessionals(next.items)}` : ""}</p>
             </section>
           )}
 
@@ -227,12 +229,12 @@ function Stat({ label, value, hint, accent }: { label: string; value: string; hi
   );
 }
 
-function UpcomingRow({ a, tz, showPro }: { a: { id: string; startsAt: Date; serviceName: string; status: AppointmentStatus; client: { name: string }; professional: { name: string } }; tz: string; showPro: boolean }) {
+function UpcomingRow({ a, tz, showPro }: { a: { id: string; startsAt: Date; serviceName: string; status: AppointmentStatus; client: { name: string }; items: { professional: { name: string } }[] }; tz: string; showPro: boolean }) {
   return (
     <Link href={`/app/agendamentos/${a.id}`} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-zinc-50">
       <span className="w-28 shrink-0 text-zinc-600">{fmtDateShort(a.startsAt, tz)}</span>
       <span className="w-12 shrink-0 font-medium tabular-nums">{fmtTime(a.startsAt, tz)}</span>
-      <span className="min-w-0 flex-1 truncate">{a.client.name} · <span className="text-zinc-500">{a.serviceName}{showPro ? ` · ${a.professional.name}` : ""}</span></span>
+      <span className="min-w-0 flex-1 truncate">{a.client.name} · <span className="text-zinc-500">{a.serviceName}{showPro ? ` · ${describeProfessionals(a.items)}` : ""}</span></span>
       <StatusBadge status={a.status} />
     </Link>
   );

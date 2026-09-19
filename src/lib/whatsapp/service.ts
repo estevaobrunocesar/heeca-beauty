@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { fmtDate, fmtTime, toDateKey, addDaysToKey } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import { paymentPageUrl } from "@/lib/payments/service";
-import { describeBooking } from "@/lib/services/addons";
+import { describeProfessionals, describeVisit } from "@/lib/appointments/summary";
 import { getWhatsappProvider } from "./index";
 import { DEFAULT_TEMPLATES, renderTemplate } from "./templates";
 import type { QuickReplyButton, TemplateMessage } from "./provider";
@@ -32,7 +32,7 @@ export function publicBookingUrl(slug: string) {
 export async function sendAppointmentMessage(appointmentId: string, kind: OutboundKind) {
   const appt = await db.appointment.findUnique({
     where: { id: appointmentId },
-    include: { tenant: { include: { templates: true } }, client: true, professional: true, addOns: { select: { name: true } } },
+    include: { tenant: { include: { templates: true } }, client: true, items: { orderBy: { sortOrder: "asc" }, include: { professional: { select: { name: true } } } } },
   });
   if (!appt) return null;
 
@@ -50,9 +50,10 @@ export async function sendAppointmentMessage(appointmentId: string, kind: Outbou
 
   const vars: MessageVars = {
     cliente: client.name.split(" ")[0],
-    servico: describeBooking(appt.serviceName, appt.addOns.map((a) => a.name)),
+    // Cada item já traz os adicionais no nome ("Corte + Nail art"); a visita junta os itens ("Corte + Manicure").
+    servico: describeVisit(appt.items),
     orientacoes,
-    profissional: appt.professional.name,
+    profissional: describeProfessionals(appt.items),
     estabelecimento: tenant.businessName,
     data: fmtDate(appt.startsAt, tz),
     hora: fmtTime(appt.startsAt, tz),
