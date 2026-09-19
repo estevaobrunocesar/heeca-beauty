@@ -6,7 +6,7 @@ import { ServiceForm } from "../service-form";
 
 export default async function NewServicePage({ searchParams }: PageProps<"/app/servicos/novo">) {
   const ctx = await requireAuth();
-  if (!ctx.isOwner) redirect("/app");
+  if (!ctx.canManage) redirect("/app");
   const sp = await searchParams;
   const addOn = sp.tipo === "adicional";
   const categories = await listCategories(ctx.tenant.id);

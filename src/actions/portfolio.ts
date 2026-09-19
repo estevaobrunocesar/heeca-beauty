@@ -24,7 +24,7 @@ function parse(formData: FormData) {
 
 async function owner() {
   const ctx = await requireAuth();
-  if (!ctx.isOwner) return null;
+  if (!ctx.canManage) return null;
   return ctx;
 }
 

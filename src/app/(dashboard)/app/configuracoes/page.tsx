@@ -20,6 +20,13 @@ export default async function BusinessSettingsPage() {
           address: tenant.address ?? "",
           city: tenant.city ?? "",
           instagram: tenant.instagram ?? "",
+          legalName: tenant.legalName ?? "",
+          cnpj: tenant.cnpj ?? "",
+          email: tenant.email ?? "",
+          website: tenant.website ?? "",
+          photoUrls: tenant.photoUrls.join("\n"),
+          openingHours: tenant.openingHours ?? "",
+          extraInfo: tenant.extraInfo ?? "",
         }}
         base={base}
       />

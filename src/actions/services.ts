@@ -38,8 +38,8 @@ function parse(formData: FormData) {
 }
 
 export async function createServiceAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { tenant, isOwner } = await requireAuth();
-  if (!isOwner) return fail("Apenas a responsável pode gerenciar os procedimentos.");
+  const { tenant, canManage } = await requireAuth();
+  if (!canManage) return fail("Apenas a responsável pode gerenciar os procedimentos.");
   const r = parse(formData);
   if (!r.ok) return fail(r.error);
   r.data.categoryId = await ownedCategoryId(tenant.id, r.data.categoryId);
@@ -60,8 +60,8 @@ export async function createServiceAction(_prev: ActionResult, formData: FormDat
 }
 
 export async function updateServiceAction(id: string, _prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { tenant, isOwner } = await requireAuth();
-  if (!isOwner) return fail("Apenas a responsável pode gerenciar os procedimentos.");
+  const { tenant, canManage } = await requireAuth();
+  if (!canManage) return fail("Apenas a responsável pode gerenciar os procedimentos.");
   const r = parse(formData);
   if (!r.ok) return fail(r.error);
   r.data.categoryId = await ownedCategoryId(tenant.id, r.data.categoryId);
@@ -74,8 +74,8 @@ export async function updateServiceAction(id: string, _prev: ActionResult, formD
 }
 
 export async function toggleServiceAction(id: string) {
-  const { tenant, isOwner } = await requireAuth();
-  if (!isOwner) return;
+  const { tenant, canManage } = await requireAuth();
+  if (!canManage) return;
   const svc = await db.service.findFirst({ where: { id, tenantId: tenant.id } });
   if (!svc) return;
   await db.service.update({ where: { id }, data: { active: !svc.active } });
@@ -83,16 +83,16 @@ export async function toggleServiceAction(id: string) {
 }
 
 export async function deleteServiceAction(id: string) {
-  const { tenant, isOwner } = await requireAuth();
-  if (!isOwner) return;
+  const { tenant, canManage } = await requireAuth();
+  if (!canManage) return;
   // Soft delete: agendamentos passados continuam apontando para o serviço.
   await db.service.updateMany({ where: { id, tenantId: tenant.id }, data: { deletedAt: new Date(), active: false } });
   revalidatePath("/app/servicos");
 }
 
 export async function moveServiceAction(id: string, direction: "up" | "down") {
-  const { tenant, isOwner } = await requireAuth();
-  if (!isOwner) return;
+  const { tenant, canManage } = await requireAuth();
+  if (!canManage) return;
   const list = await db.service.findMany({ where: { tenantId: tenant.id, deletedAt: null }, orderBy: { sortOrder: "asc" } });
   const idx = list.findIndex((s) => s.id === id);
   const swapWith = direction === "up" ? idx - 1 : idx + 1;

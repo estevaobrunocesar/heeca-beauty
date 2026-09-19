@@ -3,18 +3,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const items = [
-  { href: "/app", label: "Início", icon: HomeIcon, ownerOnly: false },
-  { href: "/app/agenda", label: "Agenda", icon: CalendarIcon, ownerOnly: false },
-  { href: "/app/servicos", label: "Serviços", icon: ServicesIcon, ownerOnly: true },
-  { href: "/app/clientes", label: "Clientes", icon: UsersIcon, ownerOnly: false },
-  { href: "/app/portfolio", label: "Portfólio", icon: GalleryIcon, ownerOnly: true },
-  { href: "/app/equipe", label: "Equipe", icon: TeamIcon, ownerOnly: true },
-  { href: "/app/configuracoes", label: "Configurações", icon: SettingsIcon, ownerOnly: true },
+export type NavRole = "OWNER" | "MANAGER" | "RECEPTION" | "STAFF";
+
+// Quem vê cada item (SPEC §6). "manage" = dono e gerente; "commission" = todos menos recepção.
+const items: { href: string; label: string; icon: (p: IconProps) => React.JSX.Element; access: "all" | "manage" | "commission" }[] = [
+  { href: "/app", label: "Início", icon: HomeIcon, access: "all" },
+  { href: "/app/agenda", label: "Agenda", icon: CalendarIcon, access: "all" },
+  { href: "/app/servicos", label: "Serviços", icon: ServicesIcon, access: "manage" },
+  { href: "/app/clientes", label: "Clientes", icon: UsersIcon, access: "all" },
+  { href: "/app/comissoes", label: "Comissões", icon: CommissionIcon, access: "commission" },
+  { href: "/app/portfolio", label: "Portfólio", icon: GalleryIcon, access: "manage" },
+  { href: "/app/equipe", label: "Equipe", icon: TeamIcon, access: "manage" },
+  { href: "/app/configuracoes", label: "Configurações", icon: SettingsIcon, access: "manage" },
 ];
 
-export function DashboardNav({ variant, isOwner }: { variant: "sidebar" | "bottom"; isOwner: boolean }) {
-  const visible = items.filter((i) => !i.ownerOnly || isOwner);
+export function DashboardNav({ variant, role }: { variant: "sidebar" | "bottom"; role: NavRole }) {
+  const canManage = role === "OWNER" || role === "MANAGER";
+  const visible = items.filter((i) => i.access === "all" || (i.access === "manage" && canManage) || (i.access === "commission" && role !== "RECEPTION"));
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/app" ? pathname === "/app" : pathname.startsWith(href));
 
@@ -61,6 +66,10 @@ const base = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLin
 
 function HomeIcon(p: IconProps) {
   return <svg {...base} {...p}><path d="M3 11.5 12 4l9 7.5" /><path d="M5 10v10h14V10" /></svg>;
+}
+function CommissionIcon(p: IconProps) {
+  // Cifrão em círculo
+  return <svg {...base} {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v10M14.5 9.5c0-1-1.1-1.7-2.5-1.7s-2.5.7-2.5 1.7 1.1 1.5 2.5 1.7 2.5.8 2.5 1.8-1.1 1.7-2.5 1.7-2.5-.7-2.5-1.7" /></svg>;
 }
 function CalendarIcon(p: IconProps) {
   return <svg {...base} {...p}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>;

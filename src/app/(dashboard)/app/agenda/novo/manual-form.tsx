@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createManualAppointmentAction } from "@/actions/appointments";
-import { SlotPicker } from "@/components/slot-picker";
+import { SlotPicker, type SlotPickerItem } from "@/components/slot-picker";
 import { Avatar } from "@/components/dashboard/avatar";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Alert } from "@/components/ui/alert";
@@ -16,24 +16,30 @@ type AddOn = { id: string; name: string; durationMinutes: number; priceCents: nu
 type ClientOpt = { name: string; phone: string };
 type Pro = { id: string; name: string; photoUrl: string | null };
 
+/** Um serviço da visita no formulário do painel: sempre com profissional definido (a recepção decide). */
+type Item = { key: number; serviceId: string; professionalId: string; addOnIds: string[] };
+
 type Props = {
   slug: string; todayKey: string; maxAdvanceDays: number;
   professionals: Pro[]; defaultProfessionalId: string;
   services: Service[]; addOns: AddOn[]; clients: ClientOpt[]; preselected: ClientOpt | null;
 };
 
+const MAX_ITEMS = 6;
+
+function fmtDuration(min: number) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h === 0 ? `${m} min` : m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, "0")}`;
+}
+
 export function ManualAppointmentForm({ slug, todayKey, maxAdvanceDays, professionals, defaultProfessionalId, services, addOns, clients, preselected }: Props) {
   const router = useRouter();
   const [state, action] = useActionState(createManualAppointmentAction, null);
-  const [professionalId, setProfessionalId] = useState(defaultProfessionalId);
-  const available = services.filter((s) => s.professionalIds.includes(professionalId));
-  const [serviceId, setServiceId] = useState(available[0]?.id ?? "");
+  const servicesFor = (professionalId: string) => services.filter((s) => s.professionalIds.includes(professionalId));
+  const firstService = (professionalId: string) => servicesFor(professionalId)[0]?.id ?? "";
+  const [items, setItems] = useState<Item[]>([{ key: 1, serviceId: firstService(defaultProfessionalId), professionalId: defaultProfessionalId, addOnIds: [] }]);
   const [slot, setSlot] = useState<{ dateKey: string; minutes: number } | null>(null);
-  const [addOnIds, setAddOnIds] = useState<string[]>([]);
-  const service = services.find((s) => s.id === serviceId);
-  const chosenAddOns = addOns.filter((a) => addOnIds.includes(a.id));
-  const totals = service ? computeBookingTotals(service, chosenAddOns) : null;
-  const toggleAddOn = (id: string) => { setAddOnIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id])); setSlot(null); };
   const [name, setName] = useState(preselected?.name ?? "");
   const [phone, setPhone] = useState(preselected ? formatPhone(preselected.phone) : "");
 
@@ -41,14 +47,41 @@ export function ManualAppointmentForm({ slug, todayKey, maxAdvanceDays, professi
     if (state?.ok) router.push(`/app/agendamentos/${state.message}`);
   }, [state, router]);
 
-  const pickProfessional = (id: string) => {
-    setProfessionalId(id);
+  const update = (key: number, patch: Partial<Item>) => {
     setSlot(null);
-    const next = services.filter((s) => s.professionalIds.includes(id));
-    if (!next.some((s) => s.id === serviceId)) setServiceId(next[0]?.id ?? "");
+    setItems((list) => list.map((it) => (it.key === key ? { ...it, ...patch } : it)));
+  };
+  const setProfessional = (key: number, professionalId: string) => {
+    const it = items.find((x) => x.key === key)!;
+    // Serviço que o novo profissional não faz é trocado pelo primeiro que ele faz.
+    const keep = servicesFor(professionalId).some((s) => s.id === it.serviceId);
+    update(key, { professionalId, serviceId: keep ? it.serviceId : firstService(professionalId) });
+  };
+  const addItem = () => {
+    if (items.length >= MAX_ITEMS) return;
+    const last = items[items.length - 1];
+    setSlot(null);
+    setItems((list) => [...list, { key: (last?.key ?? 0) + 1, serviceId: firstService(last?.professionalId ?? defaultProfessionalId), professionalId: last?.professionalId ?? defaultProfessionalId, addOnIds: [] }]);
+  };
+  const removeItem = (key: number) => { setSlot(null); setItems((list) => list.filter((it) => it.key !== key)); };
+  const move = (index: number, dir: -1 | 1) => {
+    const j = index + dir;
+    if (j < 0 || j >= items.length) return;
+    setSlot(null);
+    setItems((list) => { const next = [...list]; [next[index], next[j]] = [next[j], next[index]]; return next; });
   };
 
-  if (services.length === 0) return <Alert>Cadastre ao menos um procedimento ativo antes de agendar.</Alert>;
+  const resolved = items.map((it) => {
+    const service = services.find((s) => s.id === it.serviceId);
+    const chosen = addOns.filter((a) => it.addOnIds.includes(a.id));
+    return { ...it, service, totals: service ? computeBookingTotals(service, chosen) : null };
+  });
+  const complete = resolved.every((r) => r.service);
+  const totals = resolved.reduce((acc, r) => ({ durationMinutes: acc.durationMinutes + (r.totals?.durationMinutes ?? 0), priceCents: acc.priceCents + (r.totals?.priceCents ?? 0) }), { durationMinutes: 0, priceCents: 0 });
+  const pickerItems: SlotPickerItem[] = items.map((it) => ({ serviceId: it.serviceId, professionalId: it.professionalId, addOnIds: it.addOnIds }));
+  const payload = JSON.stringify(items.map((it) => ({ serviceId: it.serviceId, professionalId: it.professionalId, addOnIds: it.addOnIds })));
+
+  if (services.length === 0) return <Alert>Cadastre ao menos um serviço ativo antes de agendar.</Alert>;
 
   return (
     <form action={action} className="space-y-6">
@@ -76,79 +109,93 @@ export function ManualAppointmentForm({ slug, todayKey, maxAdvanceDays, professi
         </div>
       </section>
 
-      {professionals.length > 1 && (
-        <section className="card space-y-3 p-5">
-          <h2 className="font-medium">2. Profissional</h2>
-          <div className="flex flex-wrap gap-2">
-            {professionals.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => pickProfessional(p.id)}
-                className={`btn gap-2 py-1.5 pl-1.5 pr-3 text-sm ${professionalId === p.id ? "bg-zinc-900 text-white" : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"}`}
-              >
-                <Avatar name={p.name} photoUrl={p.photoUrl} size="sm" />
-                {p.name}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-      <input type="hidden" name="professionalId" value={professionalId} />
-
       <section className="card space-y-3 p-5">
-        <h2 className="font-medium">{professionals.length > 1 ? "3" : "2"}. Procedimento</h2>
-        {available.length === 0 ? (
-          <p className="text-sm text-zinc-500">Esta profissional não tem procedimentos vinculados.</p>
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {available.map((s) => (
-              <label key={s.id} className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm ${serviceId === s.id ? "border-zinc-900 bg-zinc-50" : "border-zinc-200"}`}>
-                <span>
-                  <input type="radio" name="serviceId" value={s.id} checked={serviceId === s.id} onChange={() => { setServiceId(s.id); setSlot(null); }} className="mr-2" />
-                  {s.name}
-                </span>
-                <span className="text-xs text-zinc-500">{s.durationMinutes} min · {formatCents(s.priceCents)}</span>
-              </label>
-            ))}
-          </div>
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-medium">2. Serviços</h2>
+          <span className="text-xs text-zinc-500">{items.length > 1 ? `${items.length} serviços · ` : ""}{fmtDuration(totals.durationMinutes)} · {formatCents(totals.priceCents)}</span>
+        </div>
+        {items.length > 1 && <p className="text-xs text-zinc-500">Nesta ordem, um depois do outro. Cada serviço ocupa a agenda do próprio profissional.</p>}
+
+        <div className="space-y-3">
+          {resolved.map((it, index) => {
+            const available = servicesFor(it.professionalId);
+            return (
+              <div key={it.key} className="rounded-lg border border-zinc-200 p-3">
+                <div className="flex flex-wrap items-start gap-3">
+                  {items.length > 1 && <span className="mt-2 w-5 text-sm text-zinc-400">{index + 1}.</span>}
+                  <div className="min-w-0 flex-1 space-y-3">
+                    {professionals.length > 1 && (
+                      <div className="flex flex-wrap gap-2">
+                        {professionals.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setProfessional(it.key, p.id)}
+                            className={`btn gap-2 py-1 pl-1 pr-2.5 text-xs ${it.professionalId === p.id ? "bg-zinc-900 text-white" : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"}`}
+                          >
+                            <Avatar name={p.name} photoUrl={p.photoUrl} size="sm" />
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {available.length === 0 ? (
+                      <p className="text-sm text-zinc-500">Este profissional não tem serviços vinculados.</p>
+                    ) : (
+                      <select className="input" value={it.serviceId} onChange={(e) => update(it.key, { serviceId: e.target.value })} aria-label="Serviço">
+                        {available.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name} · {s.durationMinutes} min · {formatCents(s.priceCents)}</option>
+                        ))}
+                      </select>
+                    )}
+                    {addOns.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {addOns.map((a) => {
+                          const on = it.addOnIds.includes(a.id);
+                          return (
+                            <button key={a.id} type="button" onClick={() => update(it.key, { addOnIds: on ? it.addOnIds.filter((x) => x !== a.id) : [...it.addOnIds, a.id] })}
+                              className={`rounded-full border px-2.5 py-0.5 text-xs transition ${on ? "border-brand-500 bg-brand-50 text-brand-800" : "border-zinc-200 text-zinc-700 hover:border-zinc-400"}`}>
+                              {on ? "✓ " : "+ "}{a.name} <span className="text-zinc-500">{formatCents(a.priceCents)}{a.durationMinutes ? ` · ${a.durationMinutes} min` : ""}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {items.length > 1 && (
+                      <>
+                        <button type="button" className="btn-ghost px-2 py-1" disabled={index === 0} onClick={() => move(index, -1)} aria-label="Subir">↑</button>
+                        <button type="button" className="btn-ghost px-2 py-1" disabled={index === items.length - 1} onClick={() => move(index, 1)} aria-label="Descer">↓</button>
+                        <button type="button" className="btn-ghost px-2 py-1 text-rose-600" onClick={() => removeItem(it.key)} aria-label="Remover">×</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {items.length < MAX_ITEMS && (
+          <button type="button" className="btn-secondary" onClick={addItem}>+ Adicionar serviço</button>
         )}
-        {addOns.length > 0 && (
-          <div className="border-t border-zinc-100 pt-3">
-            <p className="mb-2 text-sm text-zinc-600">Adicionais</p>
-            <div className="flex flex-wrap gap-2">
-              {addOns.map((a) => {
-                const on = addOnIds.includes(a.id);
-                return (
-                  <button key={a.id} type="button" onClick={() => toggleAddOn(a.id)}
-                    className={`rounded-full border px-3 py-1 text-sm transition ${on ? "border-brand-500 bg-brand-50 text-brand-800" : "border-zinc-200 text-zinc-700 hover:border-zinc-400"}`}>
-                    {on ? "✓ " : "+ "}{a.name} <span className="text-xs text-zinc-500">{formatCents(a.priceCents)}{a.durationMinutes ? ` · ${a.durationMinutes} min` : ""}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {totals && chosenAddOns.length > 0 && (
-              <p className="mt-2 text-xs text-zinc-500">Total: {totals.durationMinutes} min · {formatCents(totals.priceCents)}</p>
-            )}
-          </div>
-        )}
-        <input type="hidden" name="addOnIds" value={addOnIds.join(",")} />
+        <input type="hidden" name="items" value={payload} />
       </section>
 
       <section className="card space-y-3 p-5">
-        <h2 className="font-medium">{professionals.length > 1 ? "4" : "3"}. Data e horário</h2>
-        {serviceId && (
-          <SlotPicker slug={slug} serviceId={serviceId} addOnIds={addOnIds} professionalId={professionalId} todayKey={todayKey} maxAdvanceDays={maxAdvanceDays} value={slot} onChange={setSlot} />
+        <h2 className="font-medium">3. Data e horário</h2>
+        {complete && (
+          <SlotPicker slug={slug} items={pickerItems} todayKey={todayKey} maxAdvanceDays={maxAdvanceDays} value={slot} onChange={setSlot} />
         )}
         <input type="hidden" name="dateKey" value={slot?.dateKey ?? ""} />
         <input type="hidden" name="minutes" value={slot?.minutes ?? ""} />
         <div>
           <label className="label" htmlFor="notes">Observações (opcional)</label>
-          <input id="notes" name="notes" className="input" placeholder="Ex.: quer trocar para formato bailarina" />
+          <input id="notes" name="notes" className="input" placeholder="Ex.: cliente pediu a mesma cor da última vez" />
         </div>
       </section>
 
-      <SubmitButton disabled={!slot} pendingText="Agendando...">Confirmar agendamento</SubmitButton>
+      <SubmitButton disabled={!slot || !complete} pendingText="Agendando...">Confirmar agendamento</SubmitButton>
     </form>
   );
 }

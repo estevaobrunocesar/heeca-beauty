@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Portfólio" };
 
 export default async function PortfolioPage() {
   const ctx = await requireAuth();
-  if (!ctx.isOwner) redirect("/app");
+  if (!ctx.canManage) redirect("/app");
   const { tenant } = ctx;
   const items = await db.portfolioItem.findMany({
     where: { tenantId: tenant.id },

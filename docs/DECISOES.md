@@ -37,3 +37,15 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 ## 2026-09-18 — Categorias por tenant
 
 **Decisão.** `ServiceCategory` é tabela por tenant (nome, slug, ordem). O bootstrap e o seed criam as cinco do spec; o salão renomeia, reordena, exclui e cria. Excluir categoria deixa os serviços "sem categoria" (FK `SetNull`), nunca apaga serviço. Ícones e exemplos de nomes existem só para os slugs padrão (`DEFAULT_CATEGORIES`).
+
+## 2026-09-19 — Comissão apurada por item ao concluir a visita
+
+**Decisão.** Regra pura em `src/lib/commissions.ts`, precedência: valor fixo do par profissional×serviço → percentual do par → percentual padrão do profissional → nada (`null`, não comissionado). Base = preço do item com adicionais; o sinal via Pix não altera a base. Arredondamento ao centavo. A apuração acontece na transição para `COMPLETED` e fica gravada em `AppointmentItem.commissionCents` (snapshot: mudar a regra depois não altera fechamentos). Sair de `COMPLETED` limpa a comissão dos itens ainda não acertados. `commissionPaidAt` marca o acerto; `/app/comissoes` fecha por mês e profissional.
+
+**Descartado.** Calcular comissão na hora de exibir (sem snapshot): faria o histórico mudar quando o percentual muda. Tabela própria de fechamento/pagamento: desnecessária enquanto o acerto é "marcar o período como pago"; entra quando houver adiantamentos ou descontos.
+
+## 2026-09-19 — Perfis: OWNER, MANAGER, RECEPTION, STAFF
+
+**Decisão.** `requireAuth` expõe `role`, `isOwner` (só dono), `canManage` (dono e gerente) e `seesTeam` (dono, gerente e recepção). Gestão operacional (serviços, categorias, portfólio, equipe, configurações, comissões) usa `canManage`; acessos/perfis e configuração de pagamentos continuam `isOwner`. Recepção enxerga agenda e clientes da equipe toda, não edita cadastros nem vê comissões. Todo login continua vinculado a uma pessoa da equipe (`Professional`): quem não atende (recepção) fica inativo na agenda e não aparece na página pública.
+
+**Descartado.** Usuários sem `Professional` (tela de acessos separada): mais uma entidade e uma tela para o MVP; o vínculo com uma pessoa da equipe cobre o caso e mantém o SSO do portal (que cria STAFF com profissional) intacto. Permissões personalizadas (§6 "futuramente") ficam para depois.

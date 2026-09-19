@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireAuth, resolveProfessional, type AuthContext } from "@/lib/auth/session";
-import { AppointmentError, createAppointment, reschedule, transition } from "@/lib/appointments/service";
+import { AppointmentError, createAppointment, MAX_ITEMS_PER_VISIT, reschedule, transition } from "@/lib/appointments/service";
 import { sendAppointmentMessage } from "@/lib/whatsapp/service";
 import type { AppointmentStatus } from "@/generated/prisma/enums";
 import { fail, success, type ActionResult } from "@/lib/action-result";
@@ -68,10 +68,14 @@ export async function resendConfirmationAction(id: string): Promise<ActionResult
   return r?.ok ? success("Mensagem reenviada") : fail(r?.error ?? "Falha ao enviar");
 }
 
-const manualSchema = z.object({
-  serviceId: z.string().min(1, "Escolha o procedimento"),
-  addOnIds: z.string().optional(), // ids separados por vírgula (input hidden)
+const manualItemSchema = z.object({
+  serviceId: z.string().min(1, "Escolha o serviço"),
   professionalId: z.string().min(1, "Escolha o profissional"),
+  addOnIds: z.array(z.string().min(1)).max(10).default([]),
+});
+
+const manualSchema = z.object({
+  items: z.string().min(1, "Escolha ao menos um serviço"), // JSON de manualItemSchema[] (input hidden)
   dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida"),
   minutes: z.coerce.number().int().min(0).max(1439),
   clientName: z.string().trim().min(2, "Informe o nome da cliente"),
@@ -79,17 +83,26 @@ const manualSchema = z.object({
   notes: z.string().trim().max(300).optional().or(z.literal("")),
 });
 
-/** Agendamento manual criado pelo profissional (ex.: cliente ligou). Nasce CONFIRMADO. */
+/** Agendamento manual criado no painel (ex.: cliente ligou). Nasce CONFIRMADO. Aceita vários serviços (SPEC §11). */
 export async function createManualAppointmentAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
   const parsed = manualSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail(parsed.error.issues[0].message);
   const d = parsed.data;
+  let items: z.infer<typeof manualItemSchema>[];
   try {
-    const professional = resolveProfessional(ctx, d.professionalId);
+    const list = z.array(manualItemSchema).min(1, "Escolha ao menos um serviço").max(MAX_ITEMS_PER_VISIT).safeParse(JSON.parse(d.items));
+    if (!list.success) return fail(list.error.issues[0].message);
+    items = list.data;
+  } catch {
+    return fail("Serviços inválidos");
+  }
+  try {
+    // STAFF só agenda para si; OWNER para qualquer profissional da equipe.
+    const resolved = items.map((it) => ({ ...it, professionalId: resolveProfessional(ctx, it.professionalId).id }));
     const appt = await createAppointment({
       tenant: ctx.tenant,
-      items: [{ serviceId: d.serviceId, professionalId: professional.id, addOnIds: d.addOnIds ? d.addOnIds.split(",") : [] }],
+      items: resolved,
       dateKey: d.dateKey,
       minutes: d.minutes,
       client: { name: d.clientName, phone: d.clientPhone },

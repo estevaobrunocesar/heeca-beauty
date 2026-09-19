@@ -28,9 +28,9 @@ export default async function AgendaPage({ searchParams }: PageProps<"/app/agend
 
   // Filtro de profissional: OWNER vê todos por padrão; STAFF só o próprio.
   const team = ctx.professionals;
-  const showTeam = ctx.isOwner && team.length > 1;
+  const showTeam = ctx.seesTeam && team.length > 1;
   const requestedPro = typeof sp.pro === "string" ? team.find((p) => p.id === sp.pro) : undefined;
-  const selected = ctx.isOwner ? requestedPro ?? null : ctx.professional; // null = todos
+  const selected = ctx.seesTeam ? requestedPro ?? null : ctx.professional; // null = todos
   const proIds = selected ? [selected.id] : team.map((p) => p.id);
   const proName = new Map(team.map((p) => [p.id, p]));
 
@@ -78,7 +78,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/app/agend
   const step = view === "day" ? 1 : view === "week" ? 7 : 0;
   const prev = view === "month" ? format(new Date(dateKeyToDate(date).setMonth(dateKeyToDate(date).getMonth() - 1)), "yyyy-MM-dd") : addDaysToKey(date, -step);
   const next = view === "month" ? format(new Date(dateKeyToDate(date).setMonth(dateKeyToDate(date).getMonth() + 1)), "yyyy-MM-dd") : addDaysToKey(date, step);
-  const proQ = selected && ctx.isOwner ? `&pro=${selected.id}` : "";
+  const proQ = selected && ctx.seesTeam ? `&pro=${selected.id}` : "";
   const href = (v: View, d: string, pro: string | null | undefined = undefined) =>
     `/app/agenda?view=${v}&date=${d}${pro === undefined ? proQ : pro ? `&pro=${pro}` : ""}`;
   const showProOnCards = !selected && team.length > 1;

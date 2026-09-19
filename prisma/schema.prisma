@@ -22,8 +22,17 @@ model Tenant {
   phone        String? // WhatsApp do estabelecimento (E.164)
   address      String?
   city         String?
-  instagram    String? // handle sem @ (ex.: "ana.nails")
+  instagram    String? // handle sem @ (ex.: "salaobelavista")
   timezone     String  @default("America/Sao_Paulo")
+
+  // Cadastro do salão (SPEC §4)
+  legalName    String? // razão social
+  cnpj         String? // só dígitos
+  email        String?
+  website      String?
+  photoUrls    String[] @default([]) // fotos do espaço na página pública
+  openingHours String? // texto livre: "Ter–Sáb 9h às 19h" (a agenda real é por profissional)
+  extraInfo    String? // informações adicionais (estacionamento, acessibilidade…)
 
   // Regras de agenda (configuráveis pelo profissional)
   slotIntervalMinutes         Int     @default(15) // granularidade dos horários exibidos
@@ -89,8 +98,10 @@ enum DepositMode {
 }
 
 enum UserRole {
-  OWNER
-  STAFF
+  OWNER // dono: tudo
+  MANAGER // gerente: gestão operacional e financeira, sem acessos/pagamentos
+  RECEPTION // recepção: agenda e clientes de toda a equipe
+  STAFF // profissional: só a própria agenda
 }
 
 model User {
@@ -413,7 +424,8 @@ model AppointmentItem {
   priceCents      Int
 
   // Comissão apurada quando a visita é concluída (SPEC §17). null = ainda não apurada / não comissionado.
-  commissionCents Int?
+  commissionCents  Int?
+  commissionPaidAt DateTime? // quando o salão acertou esta comissão com o profissional
 
   createdAt DateTime @default(now())
 
@@ -426,6 +438,7 @@ model AppointmentItem {
   @@index([appointmentId, sortOrder])
   @@index([professionalId, startsAt, endsAt])
   @@index([tenantId, startsAt])
+  @@index([professionalId, commissionPaidAt])
 }
 
 enum AppointmentActor {

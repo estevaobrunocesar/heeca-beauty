@@ -22,11 +22,26 @@ const businessSchema = z.object({
   address: z.string().trim().max(200).optional().or(z.literal("")),
   city: z.string().trim().max(80).optional().or(z.literal("")),
   instagram: z.string().trim().max(60).optional().or(z.literal("")),
+  // Cadastro do salão (SPEC §4)
+  legalName: z.string().trim().max(120).optional().or(z.literal("")),
+  cnpj: z.string().trim().max(20).optional().or(z.literal("")),
+  email: z.string().trim().email("E-mail inválido").optional().or(z.literal("")),
+  website: z.string().trim().url("URL do site inválida").optional().or(z.literal("")),
+  photoUrls: z.string().trim().max(2000).optional().or(z.literal("")), // uma URL por linha
+  openingHours: z.string().trim().max(200).optional().or(z.literal("")),
+  extraInfo: z.string().trim().max(600).optional().or(z.literal("")),
 });
+
+/** CNPJ: guarda só os 14 dígitos; vazio = null; qualquer outra coisa é inválido. */
+function parseCnpj(raw: string): string | null | false {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return null;
+  return digits.length === 14 ? digits : false;
+}
 
 export async function updateBusinessAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.isOwner) return fail("Apenas a responsável pode alterar os dados do negócio.");
+  if (!ctx.canManage) return fail("Apenas a responsável pode alterar os dados do negócio.");
   const { tenant, user } = ctx;
   const parsed = businessSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail(parsed.error.issues[0].message);
@@ -40,6 +55,10 @@ export async function updateBusinessAction(_prev: ActionResult, formData: FormDa
     phone = normalizePhone(d.phone);
     if (!phone) return fail("WhatsApp inválido");
   }
+  const cnpj = parseCnpj(d.cnpj ?? "");
+  if (cnpj === false) return fail("CNPJ precisa ter 14 dígitos");
+  const photoUrls = (d.photoUrls ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean).slice(0, 12);
+  if (photoUrls.some((u) => !/^https?:\/\//i.test(u))) return fail("As fotos precisam ser URLs (http/https), uma por linha");
 
   await db.$transaction([
     db.tenant.update({
@@ -48,6 +67,8 @@ export async function updateBusinessAction(_prev: ActionResult, formData: FormDa
         businessName: d.businessName, ownerName: d.ownerName, slug,
         description: d.description || null, logoUrl: d.logoUrl || null,
         phone, address: d.address || null, city: d.city || null,
+        legalName: d.legalName || null, cnpj, email: d.email || null, website: d.website || null,
+        photoUrls, openingHours: d.openingHours || null, extraInfo: d.extraInfo || null,
         // Aceita "@ana.nails", "ana.nails" ou a URL completa; guarda só o handle.
         instagram: d.instagram ? d.instagram.replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/^@/, "").replace(/\/.*$/, "") || null : null,
       },
@@ -77,7 +98,7 @@ const rulesSchema = z.object({
 /** Regras de agendamento do estabelecimento. Horários semanais ficam em cada profissional. */
 export async function updateScheduleAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.isOwner) return fail("Apenas a responsável pode alterar as regras.");
+  if (!ctx.canManage) return fail("Apenas a responsável pode alterar as regras.");
 
   const parsed = rulesSchema.safeParse({
     ...Object.fromEntries(formData),
@@ -112,7 +133,7 @@ const policiesSchema = z.object({
 
 export async function updatePoliciesAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.isOwner) return fail("Apenas a responsável pode alterar as políticas.");
+  if (!ctx.canManage) return fail("Apenas a responsável pode alterar as políticas.");
   const parsed = policiesSchema.safeParse({
     ...Object.fromEntries(formData),
     companionsAllowed: formData.get("companionsAllowed") === "on",

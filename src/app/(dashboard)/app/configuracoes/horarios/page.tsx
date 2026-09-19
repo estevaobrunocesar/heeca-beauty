@@ -7,7 +7,7 @@ import { ScheduleForm } from "./schedule-form";
 export default async function ScheduleSettingsPage() {
   const ctx = await requireAuth();
   // STAFF não altera regras do estabelecimento; seus horários ficam na própria página.
-  if (!ctx.isOwner) redirect(`/app/equipe/${ctx.professional.id}`);
+  if (!ctx.canManage) redirect(`/app/equipe/${ctx.professional.id}`);
   const { tenant } = ctx;
 
   return (

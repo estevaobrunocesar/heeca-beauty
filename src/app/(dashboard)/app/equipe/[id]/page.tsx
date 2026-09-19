@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
 import { minutesToHHMM } from "@/lib/dates";
@@ -13,9 +13,10 @@ export default async function ProfessionalPage({ params }: PageProps<"/app/equip
   const ctx = await requireAuth();
   const pro = ctx.professionals.find((p) => p.id === id);
   if (!pro) notFound();
+  if (!ctx.canManage && ctx.user.professional?.id !== id) redirect("/app");
 
   const [services, rules, user] = await Promise.all([
-    db.service.findMany({ where: { tenantId: ctx.tenant.id, deletedAt: null }, orderBy: { sortOrder: "asc" }, include: { professionals: { where: { professionalId: id }, select: { professionalId: true } } } }),
+    db.service.findMany({ where: { tenantId: ctx.tenant.id, deletedAt: null }, orderBy: { sortOrder: "asc" }, include: { professionals: { where: { professionalId: id }, select: { professionalId: true, commissionPercent: true } } } }),
     db.availabilityRule.findMany({ where: { professionalId: id } }),
     pro.userId ? db.user.findUnique({ where: { id: pro.userId }, select: { email: true, role: true } }) : null,
   ]);
@@ -33,26 +34,28 @@ export default async function ProfessionalPage({ params }: PageProps<"/app/equip
 
   return (
     <>
-      {ctx.isOwner && <div className="mb-4"><Link href="/app/equipe" className="text-sm text-zinc-500 hover:underline">‹ Equipe</Link></div>}
-      <PageHeader title={pro.name} description={ctx.isOwner ? "Perfil, serviços que executa, horários e acesso ao painel." : "Seu perfil e seus horários de atendimento."} />
+      {ctx.canManage && <div className="mb-4"><Link href="/app/equipe" className="text-sm text-zinc-500 hover:underline">‹ Equipe</Link></div>}
+      <PageHeader title={pro.name} description={ctx.canManage ? "Perfil, serviços que executa, horários e acesso ao painel." : "Seu perfil e seus horários de atendimento."} />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="space-y-6">
           <ProfileForm
             id={pro.id}
-            isOwner={ctx.isOwner}
-            initial={{ name: pro.name, bio: pro.bio ?? "", photoUrl: pro.photoUrl ?? "", active: pro.active }}
-            services={services.map((s) => ({ id: s.id, name: s.name, active: s.active, checked: s.professionals.length > 0 }))}
+            canManage={ctx.canManage}
+            initial={{ name: pro.name, bio: pro.bio ?? "", photoUrl: pro.photoUrl ?? "", phone: pro.phone ?? "", email: pro.email ?? "", specialties: pro.specialties ?? "", commissionPercent: pro.commissionPercent, active: pro.active }}
+            services={services.map((s) => ({ id: s.id, name: s.name, active: s.active, checked: s.professionals.length > 0, commissionPercent: s.professionals[0]?.commissionPercent ?? null }))}
           />
         </div>
 
         <aside className="space-y-6">
+          {/* Acessos e perfis são só do dono (SPEC §6) */}
           {ctx.isOwner && (
             <AccessForm
               id={pro.id}
               email={user?.email ?? ""}
               hasAccess={!!pro.userId}
               isOwnerAccount={user?.role === "OWNER"}
+              role={user?.role === "MANAGER" || user?.role === "RECEPTION" ? user.role : "STAFF"}
             />
           )}
           <section className="card p-5 text-sm text-zinc-600">

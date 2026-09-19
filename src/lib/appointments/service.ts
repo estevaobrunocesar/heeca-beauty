@@ -14,6 +14,7 @@ import { computeDepositCents } from "@/lib/payments/deposit";
 import { createDepositCharge, expireDeposit, refundDeposit } from "@/lib/payments/service";
 import { computeBookingTotals, describeBooking, normalizeAddOnIds } from "@/lib/services/addons";
 import { describeVisit, visitTotals } from "./summary";
+import { commissionCentsFor } from "@/lib/commissions";
 
 export class AppointmentError extends Error {
   constructor(message: string, readonly code: string = "APPOINTMENT_ERROR") {
@@ -248,6 +249,10 @@ export async function transition(input: TransitionInput) {
     },
   });
 
+  // Concluída: apura a comissão de cada item com a regra vigente (SPEC §17). Reabrir (COMPLETED → outro) limpa.
+  if (to === "COMPLETED") await settleCommissions(appt.id);
+  else if (appt.status === "COMPLETED") await db.appointmentItem.updateMany({ where: { appointmentId: appt.id, commissionPaidAt: null }, data: { commissionCents: null } });
+
   if (isCancel) {
     // Sinal: cobrança pendente é encerrada; sinal pago é estornado conforme a política.
     await expireDeposit(appt.id, "CANCELLED");
@@ -384,4 +389,32 @@ export async function sendDueReminders(now = new Date()) {
     }
   }
   return count;
+}
+
+// ───────────── Comissões (SPEC §17) ─────────────
+
+/**
+ * Grava `commissionCents` em cada item da visita usando a regra vigente do par profissional×serviço.
+ * Snapshot: mudar a comissão do profissional depois não altera visitas já concluídas.
+ * Itens já acertados (commissionPaidAt) não são recalculados.
+ */
+export async function settleCommissions(appointmentId: string) {
+  const items = await db.appointmentItem.findMany({
+    where: { appointmentId, commissionPaidAt: null },
+    include: {
+      professional: { select: { commissionPercent: true } },
+      service: { select: { professionals: { select: { professionalId: true, commissionPercent: true, commissionFixedCents: true } } } },
+    },
+  });
+  await db.$transaction(
+    items.map((it) => {
+      const pair = it.service.professionals.find((ps) => ps.professionalId === it.professionalId);
+      const commissionCents = commissionCentsFor(it.priceCents, {
+        professionalPercent: it.professional.commissionPercent,
+        overridePercent: pair?.commissionPercent,
+        overrideFixedCents: pair?.commissionFixedCents,
+      });
+      return db.appointmentItem.update({ where: { id: it.id }, data: { commissionCents } });
+    }),
+  );
 }

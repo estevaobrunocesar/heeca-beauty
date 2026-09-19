@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Equipe" };
 export default async function TeamPage() {
   const ctx = await requireAuth();
   // STAFF só vê a própria página
-  if (!ctx.isOwner) redirect(`/app/equipe/${ctx.professional.id}`);
+  if (!ctx.canManage) redirect(`/app/equipe/${ctx.professional.id}`);
 
   const team = await db.professional.findMany({
     where: { tenantId: ctx.tenant.id },

@@ -6,7 +6,15 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { Alert } from "@/components/ui/alert";
 import type { ActionResult } from "@/lib/action-result";
 
-export function AccessForm({ id, email, hasAccess, isOwnerAccount }: { id: string; email: string; hasAccess: boolean; isOwnerAccount: boolean }) {
+type Role = "STAFF" | "RECEPTION" | "MANAGER";
+
+const ROLES: { value: Role; label: string; hint: string }[] = [
+  { value: "STAFF", label: "Profissional", hint: "vê e opera só a própria agenda, clientes e comissão" },
+  { value: "RECEPTION", label: "Recepção", hint: "agenda e clientes de toda a equipe; não edita cadastros nem vê comissões" },
+  { value: "MANAGER", label: "Gerente", hint: "gestão operacional e financeira (serviços, equipe, configurações, comissões); não gerencia acessos nem pagamentos" },
+];
+
+export function AccessForm({ id, email, hasAccess, isOwnerAccount, role }: { id: string; email: string; hasAccess: boolean; isOwnerAccount: boolean; role: Role }) {
   const [state, action] = useActionState<ActionResult, FormData>(setProfessionalAccessAction.bind(null, id), null);
   const [pending, start] = useTransition();
   const [removeMsg, setRemoveMsg] = useState<string | null>(null);
@@ -23,9 +31,7 @@ export function AccessForm({ id, email, hasAccess, isOwnerAccount }: { id: strin
   return (
     <section className="card p-5">
       <h2 className="font-medium">Acesso ao painel</h2>
-      <p className="mt-1 text-sm text-zinc-500">
-        Com um login, este profissional vê e opera apenas a própria agenda.
-      </p>
+      <p className="mt-1 text-sm text-zinc-500">O que esta pessoa pode fazer no painel depende do perfil escolhido.</p>
       <form action={action} className="mt-3 space-y-3">
         {state?.ok && <Alert kind="success">{state.message}</Alert>}
         {state && !state.ok && <Alert>{state.error}</Alert>}
@@ -34,6 +40,17 @@ export function AccessForm({ id, email, hasAccess, isOwnerAccount }: { id: strin
           <label className="label" htmlFor="email">E-mail de login</label>
           <input id="email" name="email" type="email" required className="input" defaultValue={email} />
         </div>
+        <fieldset>
+          <legend className="label">Perfil</legend>
+          <div className="space-y-1.5">
+            {ROLES.map((r) => (
+              <label key={r.value} className="flex items-start gap-2 text-sm">
+                <input type="radio" name="role" value={r.value} defaultChecked={role === r.value} className="mt-1" />
+                <span><span className="font-medium">{r.label}</span> <span className="text-zinc-500">· {r.hint}</span></span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <div>
           <label className="label" htmlFor="password">{hasAccess ? "Nova senha (deixe em branco para manter)" : "Senha inicial"}</label>
           <input id="password" name="password" type="password" minLength={8} className="input" autoComplete="new-password" />

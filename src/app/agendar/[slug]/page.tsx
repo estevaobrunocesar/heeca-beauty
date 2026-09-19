@@ -100,8 +100,23 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
             {(tenant.address || tenant.city) && (
               <span className="rounded-full bg-white/15 px-3 py-1.5 backdrop-blur">📍 {[tenant.address, tenant.city].filter(Boolean).join(" · ")}</span>
             )}
+            {tenant.website && (
+              <a href={tenant.website} target="_blank" rel="noreferrer" className="rounded-full bg-white/15 px-3 py-1.5 backdrop-blur hover:bg-white/25">
+                🌐 {tenant.website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}
+              </a>
+            )}
           </div>
         </header>
+
+        {/* Fotos do espaço (SPEC §4/§20) */}
+        {tenant.photoUrls.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto border-b border-brand-100 px-5 py-3">
+            {tenant.photoUrls.map((url) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={url} src={url} alt="" className="h-28 w-40 shrink-0 rounded-xl object-cover" loading="lazy" />
+            ))}
+          </div>
+        )}
 
         {/* Portfólio */}
         {tenant.portfolio.length > 0 && (
@@ -142,13 +157,25 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
 
         {/* Informações */}
         <section className="space-y-6 border-t border-zinc-100 bg-zinc-50/60 px-5 py-6 text-sm">
-          {hours.length > 0 && (
+          {tenant.openingHours ? (
+            <div>
+              <h2 className="font-display text-xl font-semibold text-brand-950">Horário de funcionamento</h2>
+              <p className="mt-2 text-zinc-600">{tenant.openingHours}</p>
+              {tenant.professionals.length > 1 && <p className="mt-1 text-xs text-zinc-400">Cada profissional tem a própria agenda; os horários livres aparecem ao escolher os serviços.</p>}
+            </div>
+          ) : hours.length > 0 && (
             <div>
               <h2 className="font-display text-xl font-semibold text-brand-950">Horário de atendimento</h2>
               <ul className="mt-2 space-y-0.5 text-zinc-600">
                 {hours.map((h) => <li key={h}>{h}</li>)}
               </ul>
               {tenant.professionals.length > 1 && <p className="mt-1 text-xs text-zinc-400">Horários de {tenant.professionals[0].name}; cada profissional tem a própria agenda.</p>}
+            </div>
+          )}
+          {tenant.extraInfo && (
+            <div>
+              <h2 className="font-display text-xl font-semibold text-brand-950">Bom saber</h2>
+              <p className="mt-2 whitespace-pre-line text-zinc-600">{tenant.extraInfo}</p>
             </div>
           )}
           {policies.length > 0 && (

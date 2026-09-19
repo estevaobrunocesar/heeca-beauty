@@ -11,7 +11,7 @@ const nameSchema = z.string().trim().min(2, "Informe o nome da categoria").max(4
 
 async function owner() {
   const ctx = await requireAuth();
-  return ctx.isOwner ? ctx : null;
+  return ctx.canManage ? ctx : null;
 }
 
 /** Slug único dentro do tenant ("cabelo", "cabelo-2", …). */

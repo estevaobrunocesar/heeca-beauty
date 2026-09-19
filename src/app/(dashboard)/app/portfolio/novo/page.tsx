@@ -6,7 +6,7 @@ import { PortfolioItemForm } from "../item-form";
 
 export default async function NewPortfolioItemPage() {
   const ctx = await requireAuth();
-  if (!ctx.isOwner) redirect("/app");
+  if (!ctx.canManage) redirect("/app");
   const categories = await listCategories(ctx.tenant.id);
   return (
     <>

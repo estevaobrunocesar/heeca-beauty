@@ -55,9 +55,7 @@ export async function getSession(): Promise<SessionPayload | null> {
  * Contexto autenticado usado por todas as páginas e actions do painel.
  * Garante o isolamento multi-tenant: tudo que o painel faz parte de `tenant.id`.
  *
- * Permissões:
- *  - OWNER: vê e gerencia todos os profissionais (`professionals`).
- *  - STAFF: vê apenas o próprio profissional (`professional`); `professionals` contém só ele.
+ * Permissões: ver o bloco "Perfis de acesso" abaixo. `professionals` é a equipe que o usuário pode operar.
  */
 export async function requireAuth() {
   const session = await getSession();
@@ -74,9 +72,17 @@ export async function requireAuth() {
   // Assinatura bloqueada no portal Heeca (inadimplência/cancelamento): painel fecha, página pública segue.
   if (user.tenant.heecaBlocked) redirect("/bloqueado");
 
-  const isOwner = user.role === "OWNER";
+  // Perfis de acesso (SPEC §6):
+  //  - OWNER: tudo, inclusive acessos, pagamentos e vínculo com o portal.
+  //  - MANAGER: gestão operacional e financeira (serviços, equipe, configurações, comissões), sem mexer em acessos/pagamentos.
+  //  - RECEPTION: agenda e clientes de toda a equipe; não edita cadastro nem vê comissões.
+  //  - STAFF: só a própria agenda, clientes atendidos e comissão.
+  const role = user.role;
+  const isOwner = role === "OWNER";
+  const canManage = role === "OWNER" || role === "MANAGER";
+  const seesTeam = canManage || role === "RECEPTION";
   const all = await db.professional.findMany({
-    where: { tenantId: user.tenantId, ...(isOwner ? {} : { id: user.professional?.id ?? "__none__" }) },
+    where: { tenantId: user.tenantId, ...(seesTeam ? {} : { id: user.professional?.id ?? "__none__" }) },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
   if (all.length === 0) throw new Error("Tenant sem profissional cadastrado");
@@ -84,7 +90,7 @@ export async function requireAuth() {
   // "Profissional padrão" do usuário: o próprio (se vinculado) ou o primeiro da equipe.
   const professional = user.professional ?? all[0];
 
-  return { user, tenant: user.tenant, professional, professionals: all, isOwner };
+  return { user, tenant: user.tenant, professional, professionals: all, role, isOwner, canManage, seesTeam };
 }
 
 export type AuthContext = Awaited<ReturnType<typeof requireAuth>>;

@@ -4,7 +4,7 @@ import { logoutAction } from "@/actions/auth";
 import { DashboardNav } from "@/components/dashboard/nav";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { tenant, user, isOwner, professional } = await requireAuth();
+  const { tenant, user, role, canManage, professional } = await requireAuth();
 
   return (
     <div className="flex flex-1">
@@ -12,7 +12,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <Link href="/app" className="mb-6 px-2 text-xl font-semibold tracking-tight">
           Heeca<span className="text-brand-500">.</span>
         </Link>
-        <DashboardNav variant="sidebar" isOwner={isOwner} />
+        <DashboardNav variant="sidebar" role={role} />
         <div className="mt-auto space-y-3 border-t border-zinc-200 pt-4">
           <Link
             href={`/agendar/${tenant.slug}`}
@@ -24,7 +24,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <div className="px-3">
             <p className="truncate text-sm font-medium text-zinc-800">{tenant.businessName}</p>
             <p className="truncate text-xs text-zinc-500">{user.email}</p>
-            {!isOwner && <Link href={`/app/equipe/${professional.id}`} className="mt-1 block text-xs text-zinc-600 hover:underline">Meu perfil e horários</Link>}
+            {!canManage && user.professional && <Link href={`/app/equipe/${professional.id}`} className="mt-1 block text-xs text-zinc-600 hover:underline">Meu perfil e horários</Link>}
           </div>
           <form action={logoutAction} className="px-3">
             <button className="text-xs text-zinc-500 hover:text-zinc-900">Sair</button>
@@ -45,7 +45,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <div className="mx-auto max-w-6xl">{children}</div>
         </main>
       </div>
-      <DashboardNav variant="bottom" isOwner={isOwner} />
+      <DashboardNav variant="bottom" role={role} />
     </div>
   );
 }

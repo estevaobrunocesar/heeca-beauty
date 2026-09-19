@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/alert";
 type Values = {
   businessName: string; ownerName: string; slug: string; description: string;
   logoUrl: string; phone: string; address: string; city: string; instagram: string;
+  legalName: string; cnpj: string; email: string; website: string; photoUrls: string; openingHours: string; extraInfo: string;
 };
 
 export function BusinessForm({ initial, base }: { initial: Values; base: string }) {
@@ -23,8 +24,19 @@ export function BusinessForm({ initial, base }: { initial: Values; base: string 
           <input id="businessName" name="businessName" required className="input" defaultValue={initial.businessName} />
         </div>
         <div>
-          <label className="label" htmlFor="ownerName">Nome da profissional</label>
+          <label className="label" htmlFor="ownerName">Nome do responsável</label>
           <input id="ownerName" name="ownerName" required className="input" defaultValue={initial.ownerName} />
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="legalName">Razão social <span className="font-normal text-zinc-400">(opcional)</span></label>
+          <input id="legalName" name="legalName" className="input" defaultValue={initial.legalName} placeholder="Bela Vista Cabeleireiros Ltda." />
+        </div>
+        <div>
+          <label className="label" htmlFor="cnpj">CNPJ <span className="font-normal text-zinc-400">(opcional)</span></label>
+          <input id="cnpj" name="cnpj" inputMode="numeric" className="input" defaultValue={initial.cnpj} placeholder="00.000.000/0001-00" />
         </div>
       </div>
 
@@ -61,6 +73,17 @@ export function BusinessForm({ initial, base }: { initial: Values; base: string 
         </div>
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="email">E-mail do salão</label>
+          <input id="email" name="email" type="email" className="input" defaultValue={initial.email} placeholder="contato@seusalao.com.br" />
+        </div>
+        <div>
+          <label className="label" htmlFor="website">Site</label>
+          <input id="website" name="website" type="url" className="input" defaultValue={initial.website} placeholder="https://seusalao.com.br" />
+        </div>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-[1fr_200px]">
         <div>
           <label className="label" htmlFor="address">Endereço</label>
@@ -70,6 +93,22 @@ export function BusinessForm({ initial, base }: { initial: Values; base: string 
           <label className="label" htmlFor="city">Cidade</label>
           <input id="city" name="city" className="input" defaultValue={initial.city} placeholder="São Paulo - SP" />
         </div>
+      </div>
+
+      <div>
+        <label className="label" htmlFor="openingHours">Horário de funcionamento <span className="font-normal text-zinc-400">(texto da página pública)</span></label>
+        <input id="openingHours" name="openingHours" className="input" defaultValue={initial.openingHours} placeholder="Ter–Sex 9h às 19h · Sáb 8h às 15h" />
+        <p className="mt-1 text-xs text-zinc-500">Só informativo. Os horários que geram vagas são os de cada profissional, em Equipe.</p>
+      </div>
+
+      <div>
+        <label className="label" htmlFor="photoUrls">Fotos do espaço <span className="font-normal text-zinc-400">(uma URL por linha, até 12)</span></label>
+        <textarea id="photoUrls" name="photoUrls" rows={3} className="input font-mono text-xs" defaultValue={initial.photoUrls} placeholder={"https://...\nhttps://..."} />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="extraInfo">Informações adicionais</label>
+        <textarea id="extraInfo" name="extraInfo" rows={2} className="input" defaultValue={initial.extraInfo} placeholder="Estacionamento no local, acessível para cadeirantes, aceitamos cartão e Pix." />
       </div>
 
       <div className="pt-2">
