@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { platformEnabled, portalUrl } from "@/lib/heeca/service";
+import { platformEnabled, portalProductUrl } from "@/lib/heeca/service";
 import { z } from "zod";
 import { createHash, randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
@@ -22,7 +22,7 @@ const registerSchema = z.object({
 });
 
 export async function registerAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (platformEnabled()) return fail(`Crie sua conta pelo portal Heeca: ${portalUrl()}/produtos/nail`);
+  if (platformEnabled()) return fail(`Crie sua conta pelo portal Heeca: ${portalProductUrl()}`);
   const parsed = registerSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail(parsed.error.issues[0].message);
   const data = parsed.data;

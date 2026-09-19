@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { RegisterForm } from "./register-form";
-import { platformEnabled, portalUrl } from "@/lib/heeca/service";
+import { platformEnabled, portalProductUrl } from "@/lib/heeca/service";
 
 export const metadata: Metadata = { title: "Criar conta" };
 
 export default function RegisterPage() {
   // Em produção a venda é pelo portal heeca.com.br (conta, plano e cobrança lá; o estabelecimento
   // é provisionado por /api/heeca/provision). O cadastro local fica só para ambientes sem integração.
-  if (platformEnabled()) redirect(`${portalUrl()}/produtos/nail`);
+  if (platformEnabled()) redirect(portalProductUrl());
 
   return (
     <>

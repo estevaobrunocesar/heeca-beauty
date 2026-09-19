@@ -19,6 +19,10 @@ import { bootstrapTenant, uniqueTenantSlug } from "@/lib/tenant-bootstrap";
  */
 
 export const portalUrl = () => (process.env.HEECA_PORTAL_URL ?? "https://heeca.com.br").replace(/\/+$/, "");
+/** Slug deste produto no portal (catálogo, /produtos/<slug>, /sso/<slug> e `aud` do JWT de SSO). */
+export const PRODUCT_SLUG = "beauty";
+export const portalProductUrl = () => `${portalUrl()}/produtos/${PRODUCT_SLUG}`;
+export const portalSsoUrl = () => `${portalUrl()}/sso/${PRODUCT_SLUG}`;
 const secret = () => process.env.HEECA_PLATFORM_SECRET ?? "";
 export const platformEnabled = () => secret().length >= 16;
 
@@ -94,11 +98,11 @@ export async function applyEntitlement(e: Entitlement) {
 
 export type SsoClaims = { email: string; name: string; tenantId: string | null; subscriptionId: string; role: string };
 
-/** Valida o JWT emitido pelo portal (HS256, mesmo segredo, aud "nail", 60 s). */
+/** Valida o JWT emitido pelo portal (HS256, mesmo segredo, aud = PRODUCT_SLUG, 60 s). */
 export async function verifySsoToken(token: string): Promise<SsoClaims> {
   let payload: Awaited<ReturnType<typeof jwtVerify>>["payload"];
   try {
-    ({ payload } = await jwtVerify(token, new TextEncoder().encode(secret()), { issuer: "heeca-portal", audience: "nail", clockTolerance: 30 }));
+    ({ payload } = await jwtVerify(token, new TextEncoder().encode(secret()), { issuer: "heeca-portal", audience: PRODUCT_SLUG, clockTolerance: 30 }));
   } catch (e) {
     // Mensagens da jose são técnicas ("exp" claim…): o token vale 60 s, então quase sempre é só reabrir pelo portal.
     const code = (e as { code?: string }).code;

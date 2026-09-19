@@ -49,3 +49,13 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 **Decisão.** `requireAuth` expõe `role`, `isOwner` (só dono), `canManage` (dono e gerente) e `seesTeam` (dono, gerente e recepção). Gestão operacional (serviços, categorias, portfólio, equipe, configurações, comissões) usa `canManage`; acessos/perfis e configuração de pagamentos continuam `isOwner`. Recepção enxerga agenda e clientes da equipe toda, não edita cadastros nem vê comissões. Todo login continua vinculado a uma pessoa da equipe (`Professional`): quem não atende (recepção) fica inativo na agenda e não aparece na página pública.
 
 **Descartado.** Usuários sem `Professional` (tela de acessos separada): mais uma entidade e uma tela para o MVP; o vínculo com uma pessoa da equipe cobre o caso e mantém o SSO do portal (que cria STAFF com profissional) intacto. Permissões personalizadas (§6 "futuramente") ficam para depois.
+
+## 2026-09-19 — Beauty continua produto próprio (não vira marca do motor heeca_nail)
+
+**Contexto.** Após a clonagem, o `heeca_nail` virou motor multi-marca ("Heeca Schedule": Nail, Lash, Tattoo, Massage, Brow no mesmo container, marca por host). A sessão do Brow propôs que o Beauty seguisse o mesmo caminho, com um pacote de port (`PORT-MOTOR.md`) para as features que o motor não tem.
+
+**Decisão (Bruno, 19/09).** Beauty segue como produto próprio: repo, container, banco e `BEAUTY_*` próprios; `beauty.heeca.com.br`; item próprio no catálogo (slug `beauty`).
+
+**Por quê.** O núcleo do Beauty diverge do motor no ponto central — `Appointment` é a visita com `AppointmentItem` por profissional, mais perfis Gerente/Recepção e comissão por item. Portar isso para o motor é remodelar o schema de cinco marcas em produção, não "colar código". Manter separado preserva a velocidade dos dois lados; convergência (motor ganhar visita multi-item) fica como possibilidade futura, com o Beauty servindo de referência.
+
+**Consequência.** Corrigido o resíduo do clone que quebraria o SSO: `aud` do JWT e links do portal passam a usar `PRODUCT_SLUG = "beauty"` (`src/lib/heeca/service.ts`). Infra e catálogo preparados em 19/09 continuam valendo.
