@@ -1,0 +1,503 @@
+// Heeca Beauty — Sistema de gestão para salões de beleza
+// Arquitetura multi-tenant: todas as entidades de negócio pertencem a um Tenant.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────── Tenant / Auth ─────────────────────────
+
+model Tenant {
+  id           String  @id @default(cuid())
+  slug         String  @unique // app.com.br/agendar/<slug>
+  businessName String
+  ownerName    String
+  description  String?
+  logoUrl      String?
+  phone        String? // WhatsApp do estabelecimento (E.164)
+  address      String?
+  city         String?
+  instagram    String? // handle sem @ (ex.: "ana.nails")
+  timezone     String  @default("America/Sao_Paulo")
+
+  // Regras de agenda (configuráveis pelo profissional)
+  slotIntervalMinutes         Int     @default(15) // granularidade dos horários exibidos
+  bufferMinutes               Int     @default(0) // tempo mínimo entre agendamentos
+  minAdvanceMinutes           Int     @default(60) // antecedência mínima para agendar
+  maxAdvanceDays              Int     @default(60) // até quantos dias à frente
+  pendingExpiryMinutes        Int? // libera horário se não confirmado em X min (null = nunca)
+  cancelDeadlineHours         Int     @default(2) // cliente pode cancelar até X horas antes
+  reminderHoursBefore         Int     @default(24)
+  requireWhatsappConfirmation Boolean @default(true)
+  maxConcurrentAppointments   Int     @default(1)
+  maxDailyAppointments        Int? // limite de atendimentos por dia por profissional (null = sem limite)
+
+  // Políticas de atendimento (seção 14) — exibidas na página pública e aceitas pela cliente
+  lateToleranceMinutes    Int     @default(10) // tolerância de atraso
+  cancellationPolicy      String? // texto livre: política de cancelamento
+  noShowPolicy            String? // texto livre: política para não comparecimento
+  reschedulePolicy        String? // texto livre: prazo/regras de reagendamento
+  companionsAllowed       Boolean @default(true) // proibição de acompanhantes, se aplicável
+  preServiceInstructions  String? // orientações pré-atendimento (vão no WhatsApp de confirmação/lembrete)
+  requirePolicyAcceptance Boolean @default(true) // cliente precisa marcar "li e aceito" ao agendar
+
+  // Pagamento antecipado (sinal) via Pix
+  depositMode           DepositMode @default(NONE)
+  depositValue          Int         @default(0) // PERCENT: 0..100 · FIXED: centavos
+  depositTimeoutMinutes Int         @default(30) // libera o horário se não pagar em X min
+  pixProvider           String? // "mercadopago" (null = usa PIX_PROVIDER do ambiente)
+  pixCredentialsEnc     String? // access token do provedor, criptografado (AES-256-GCM)
+
+  // Vínculo com o portal heeca.com.br (dono de conta, plano e cobrança — contrato em heeca_site/docs/ENTITLEMENT.md).
+  // Só espelho: o Nail nunca cobra. null = tenant criado pelo cadastro local (sem assinatura no portal).
+  heecaSubscriptionId String?   @unique
+  heecaAccountId      String?
+  heecaPlan           String? // código do plano no portal (ex.: "solo", "studio")
+  heecaStatus         String? // TRIALING | ACTIVE | PAST_DUE | SUSPENDED | CANCELED
+  heecaBlocked        Boolean   @default(false) // access === "blocked" no portal → painel bloqueado
+  heecaSyncedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users             User[]
+  professionals     Professional[]
+  services          Service[]
+  clients           Client[]
+  appointments      Appointment[]
+  availability      AvailabilityRule[]
+  exceptions        ScheduleException[]
+  blocks            ScheduleBlock[]
+  messages          WhatsappMessage[]
+  templates         MessageTemplate[]
+  appointmentEvents AppointmentEvent[]
+  payments          Payment[]
+  portfolio         PortfolioItem[]
+}
+
+enum DepositMode {
+  NONE // sem pagamento antecipado
+  PERCENT // percentual do valor do serviço
+  FIXED // valor fixo em centavos
+}
+
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(OWNER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  professional Professional?
+  resetTokens  PasswordResetToken[]
+
+  @@index([tenantId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Quem atende. Um estabelecimento pode ter vários (equipe).
+model Professional {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String?  @unique
+  name      String
+  photoUrl  String?
+  bio       String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  appointments Appointment[]
+  availability AvailabilityRule[]
+  exceptions   ScheduleException[]
+  blocks       ScheduleBlock[]
+  services     ProfessionalService[]
+
+  @@index([tenantId])
+}
+
+// ───────────────────────── Serviços ─────────────────────────
+
+// Categorias do segmento (seção 3.2). Agrupam a lista na página pública.
+enum ServiceCategory {
+  MANICURE
+  PEDICURE
+  ALONGAMENTO
+  ADICIONAL // blindagem, banho de gel, encapsulada, nail art…
+  OUTROS
+}
+
+model Service {
+  id              String          @id @default(cuid())
+  tenantId        String
+  name            String
+  category        ServiceCategory @default(OUTROS)
+  description     String?
+  clientNotes     String? // observações importantes para a cliente (ex.: "vir sem esmalte")
+  durationMinutes Int
+  priceCents      Int
+  // Adicional (seção 6.3): não é agendado sozinho; a cliente marca junto com um procedimento
+  // principal e ele soma tempo e preço ao agendamento.
+  isAddOn         Boolean         @default(false)
+  active          Boolean         @default(true)
+  imageUrl        String?
+  sortOrder       Int             @default(0)
+  deletedAt       DateTime? // soft delete: agendamentos antigos continuam referenciando
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments  Appointment[]
+  addOnUsages   AppointmentAddOn[]
+  professionals ProfessionalService[]
+
+  @@index([tenantId, active, sortOrder])
+}
+
+// Adicionais escolhidos em um agendamento, com snapshot de nome/tempo/preço.
+model AppointmentAddOn {
+  id              String @id @default(cuid())
+  appointmentId   String
+  serviceId       String
+  name            String
+  durationMinutes Int
+  priceCents      Int
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  service     Service     @relation(fields: [serviceId], references: [id])
+
+  @@index([appointmentId])
+}
+
+// Quais serviços cada profissional executa (N:N).
+model ProfessionalService {
+  professionalId String
+  serviceId      String
+
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  service      Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([professionalId, serviceId])
+  @@index([serviceId])
+}
+
+// ───────────────────────── Agenda / Disponibilidade ─────────────────────────
+
+// Horário semanal recorrente. Uma linha por dia da semana (0 = domingo).
+model AvailabilityRule {
+  id                String @id @default(cuid())
+  tenantId          String
+  professionalId    String
+  weekday           Int // 0..6
+  startMinutes      Int // minutos desde 00:00 (ex.: 540 = 09:00)
+  endMinutes        Int
+  breakStartMinutes Int? // intervalo de almoço
+  breakEndMinutes   Int?
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@unique([professionalId, weekday])
+  @@index([tenantId])
+}
+
+enum ScheduleExceptionKind {
+  CLOSED // folga / feriado
+  CUSTOM_HOURS // horário excepcional para o dia
+}
+
+// Exceções de dia inteiro (folga ou horário diferente do padrão).
+model ScheduleException {
+  id             String                @id @default(cuid())
+  tenantId       String
+  professionalId String
+  date           DateTime              @db.Date
+  kind           ScheduleExceptionKind
+  startMinutes   Int?
+  endMinutes     Int?
+  reason         String?
+  createdAt      DateTime              @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@unique([professionalId, date])
+  @@index([tenantId, date])
+}
+
+enum ScheduleBlockKind {
+  BLOCK // bloqueio pontual (ex.: compromisso)
+  VACATION // férias (vários dias)
+}
+
+// Bloqueios por intervalo de data/hora (podem cruzar dias).
+model ScheduleBlock {
+  id             String            @id @default(cuid())
+  tenantId       String
+  professionalId String
+  kind           ScheduleBlockKind @default(BLOCK)
+  startsAt       DateTime
+  endsAt         DateTime
+  reason         String?
+  createdAt      DateTime          @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, startsAt, endsAt])
+}
+
+// ───────────────────────── Clientes ─────────────────────────
+
+model Client {
+  id       String  @id @default(cuid())
+  tenantId String
+  name     String
+  phone    String // E.164, ex.: +5511999998888
+  email    String?
+  notes    String? // observações internas do profissional
+
+  // Preferências (seção 11): ficha técnica que a Nail Designer consulta antes do atendimento
+  nailShape               String? // almond, quadrado, stiletto, bailarina…
+  nailSize                String? // curto, médio, longo (ou numeração do molde)
+  allergies               String? // produtos a evitar
+  maintenanceIntervalDays Int? // "costuma fazer manutenção a cada 20 dias"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  messages     WhatsappMessage[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId, name])
+}
+
+// ───────────────────────── Agendamentos ─────────────────────────
+
+enum AppointmentStatus {
+  PENDING // criado, WhatsApp ainda não enviado
+  AWAITING_PAYMENT // aguardando o Pix do sinal (horário reservado até expiresAt)
+  AWAITING_CONFIRMATION // WhatsApp enviado, aguardando cliente
+  CONFIRMED
+  RESCHEDULE_REQUESTED // cliente pediu outro horário; o original segue reservado até a profissional agir
+  CANCELLED_BY_CLIENT
+  CANCELLED_BY_PROFESSIONAL
+  COMPLETED
+  NO_SHOW
+}
+
+enum AppointmentSource {
+  PUBLIC // página pública
+  DASHBOARD // criado pelo profissional
+}
+
+model Appointment {
+  id             String            @id @default(cuid())
+  tenantId       String
+  professionalId String
+  serviceId      String
+  clientId       String
+  startsAt       DateTime
+  endsAt         DateTime
+  status         AppointmentStatus @default(PENDING)
+  source         AppointmentSource @default(PUBLIC)
+
+  // Snapshot do serviço no momento do agendamento.
+  // durationMinutes e priceCents são TOTAIS (procedimento principal + adicionais).
+  serviceName     String
+  durationMinutes Int
+  priceCents      Int
+
+  notes             String? // observação do cliente
+  internalNotes     String? // anotações do profissional
+  confirmationToken String    @unique
+  confirmedAt       DateTime?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  reminderSentAt    DateTime?
+  expiresAt         DateTime? // quando o pendente/aguardando pagamento será liberado automaticamente
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  professional Professional       @relation(fields: [professionalId], references: [id])
+  service      Service            @relation(fields: [serviceId], references: [id])
+  client       Client             @relation(fields: [clientId], references: [id])
+  events       AppointmentEvent[]
+  messages     WhatsappMessage[]
+  payment      Payment?
+  addOns       AppointmentAddOn[]
+
+  @@index([tenantId, startsAt])
+  @@index([professionalId, startsAt, status])
+  @@index([status, expiresAt])
+  @@index([status, startsAt, reminderSentAt])
+}
+
+enum AppointmentActor {
+  CLIENT
+  PROFESSIONAL
+  SYSTEM
+}
+
+// Histórico de alterações (auditoria)
+model AppointmentEvent {
+  id            String             @id @default(cuid())
+  tenantId      String
+  appointmentId String
+  actor         AppointmentActor
+  type          String // CREATED | STATUS_CHANGED | RESCHEDULED | NOTE
+  fromStatus    AppointmentStatus?
+  toStatus      AppointmentStatus?
+  data          Json?
+  createdAt     DateTime           @default(now())
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId, createdAt])
+}
+
+// ───────────────────────── WhatsApp ─────────────────────────
+
+enum MessageKind {
+  REQUEST_CONFIRMATION
+  CONFIRMED
+  REMINDER
+  CANCELLED
+  RESCHEDULED
+  PAYMENT_REQUEST
+  INBOUND
+}
+
+enum MessageDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+model WhatsappMessage {
+  id                String           @id @default(cuid())
+  tenantId          String
+  appointmentId     String?
+  clientId          String?
+  direction         MessageDirection
+  kind              MessageKind
+  phone             String
+  body              String
+  providerMessageId String?          @unique
+  status            MessageStatus    @default(QUEUED)
+  error             String?
+  createdAt         DateTime         @default(now())
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  client      Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+}
+
+// Templates editáveis por tenant.
+// Placeholders: {{cliente}} {{servico}} {{profissional}} {{estabelecimento}} {{data}} {{hora}} {{link}}
+model MessageTemplate {
+  id       String      @id @default(cuid())
+  tenantId String
+  kind     MessageKind
+  body     String
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, kind])
+}
+
+// ───────────────────────── Pagamentos (Pix) ─────────────────────────
+
+enum PaymentStatus {
+  PENDING // cobrança gerada, aguardando o Pix
+  PAID
+  EXPIRED // prazo venceu sem pagamento
+  CANCELLED // cobrança cancelada antes de pagar
+  REFUNDED
+  FAILED
+}
+
+// Sinal (pagamento antecipado) de um agendamento. 1:1 — um agendamento tem no máximo uma cobrança.
+model Payment {
+  id                String        @id @default(cuid())
+  tenantId          String
+  appointmentId     String        @unique
+  provider          String // "mock" | "mercadopago"
+  providerPaymentId String?       @unique
+  amountCents       Int
+  status            PaymentStatus @default(PENDING)
+  pixCopyPaste      String? // código "copia e cola" (EMV)
+  pixQrCodeBase64   String? // imagem PNG em base64 (quando o provedor fornece)
+  expiresAt         DateTime
+  paidAt            DateTime?
+  refundedAt        DateTime?
+  error             String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, createdAt])
+}
+
+// ───────────────────────── Portfólio (seção 13) ─────────────────────────
+
+// Fotos dos trabalhos da profissional. As visíveis aparecem na galeria da página pública.
+model PortfolioItem {
+  id          String           @id @default(cuid())
+  tenantId    String
+  imageUrl    String
+  title       String // nome do procedimento (ex.: "Alongamento almond em fibra")
+  description String?
+  category    ServiceCategory?
+  visible     Boolean          @default(true)
+  sortOrder   Int              @default(0)
+  publishedAt DateTime         @default(now())
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, visible, sortOrder])
+}

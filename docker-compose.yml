@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: heeca_beauty_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: heeca
+      POSTGRES_PASSWORD: heeca
+      POSTGRES_DB: heeca_beauty
+    ports:
+      - "5902:5432"
+    volumes:
+      - heeca_beauty_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heeca -d heeca_beauty"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  heeca_beauty_pgdata:

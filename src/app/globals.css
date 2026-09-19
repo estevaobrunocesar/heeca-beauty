@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Rosé — acento do Heeca Beauty (as demais cores seguem o kit de marca) */
+  --color-brand-50: #fdf2f7;
+  --color-brand-100: #fce7f1;
+  --color-brand-200: #fad0e4;
+  --color-brand-300: #f6a8cb;
+  --color-brand-400: #ee73a8;
+  --color-brand-500: #e04a8a;
+  --color-brand-600: #c8306f;
+  --color-brand-700: #a72258;
+  --color-brand-800: #8a1e4a;
+  --color-brand-900: #731d40;
+  --color-brand-950: #460b23;
+
+  --font-display: var(--font-cormorant), Georgia, serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-zinc-50 text-zinc-900 antialiased;
+}
+
+/* ───── Componentes base (Tailwind v4: @utility permite reuso via @apply) ───── */
+
+@utility input {
+  @apply w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-xs
+    placeholder:text-zinc-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200
+    disabled:cursor-not-allowed disabled:bg-zinc-100;
+}
+
+@utility label {
+  @apply mb-1 block text-sm font-medium text-zinc-700;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition
+    focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-zinc-900 text-white hover:bg-zinc-800;
+}
+
+@utility btn-accent {
+  @apply btn bg-brand-500 text-white hover:bg-brand-600;
+}
+
+@utility btn-secondary {
+  @apply btn border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-50;
+}
+
+@utility btn-ghost {
+  @apply btn text-zinc-700 hover:bg-zinc-100;
+}
+
+@utility btn-danger {
+  @apply btn border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100;
+}
+
+@utility card {
+  @apply rounded-xl border border-zinc-200 bg-white shadow-xs;
+}
