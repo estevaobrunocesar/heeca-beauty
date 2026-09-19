@@ -16,7 +16,7 @@ const sections = kinds.map((kind) => {
         .map((b, i) =>
           b.type === "quick_reply"
             ? `${i + 1}. **Resposta rápida** — texto: \`${b.text}\` (o payload é dinâmico, preenchido pelo sistema com \`confirm:<token>\` / \`cancel:<token>\`)`
-            : `${i + 1}. **Acessar site** — texto: \`${b.text}\`, tipo de URL: **Dinâmica**, URL: \`${"{APP_URL}"}${b.urlPrefix}{{1}}\` (exemplo: \`https://app.seudominio.com.br${b.urlPrefix}studio-ana-nails\`)`,
+            : `${i + 1}. **Acessar site** — texto: \`${b.text}\`, tipo de URL: **Dinâmica**, URL: \`${"{APP_URL}"}${b.urlPrefix}{{1}}\` (exemplo: \`https://app.seudominio.com.br${b.urlPrefix}salao-bela-vista\`)`,
         )
         .join("\n")
     : "_Sem botões._";

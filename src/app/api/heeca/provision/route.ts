@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { platformEnabled, provision, verifySignature, type Entitlement } from "@/lib/heeca/service";
 
-/** Portal → Nail: cria o estabelecimento da assinatura (idempotente). Contrato: heeca_site/docs/ENTITLEMENT.md */
+/** Portal → Beauty: cria o estabelecimento da assinatura (idempotente). Contrato: heeca_site/docs/ENTITLEMENT.md */
 export async function POST(req: Request) {
   if (!platformEnabled()) return NextResponse.json({ error: "integração com o portal desativada" }, { status: 503 });
   const raw = await req.text();

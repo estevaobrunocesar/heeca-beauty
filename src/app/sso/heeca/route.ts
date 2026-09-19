@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createSession } from "@/lib/auth/session";
 import { platformEnabled, resolveSsoUser, verifySsoToken } from "@/lib/heeca/service";
 
-/** Portal → navegador → Nail: troca o JWT de 60 s por uma sessão local. */
+/** Portal → navegador → Beauty: troca o JWT de 60 s por uma sessão local. */
 export async function GET(req: Request) {
   const url = new URL(req.url);
   // Atrás do proxy, req.url traz a origem interna do container: redirects usam APP_URL.

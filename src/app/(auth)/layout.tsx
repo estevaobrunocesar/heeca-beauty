@@ -8,7 +8,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <span className="text-2xl font-semibold tracking-tight">
             Heeca<span className="text-brand-500">.</span>
           </span>
-          <span className="mt-1 block text-xs text-zinc-500">agenda inteligente para Nail Designers</span>
+          <span className="mt-1 block text-xs text-zinc-500">gestão e agenda para salões de beleza</span>
         </Link>
         <div className="card p-6 sm:p-8">{children}</div>
       </div>

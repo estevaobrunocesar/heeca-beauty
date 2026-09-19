@@ -3,19 +3,18 @@
 @theme {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-
-  /* Rosé — acento do Heeca Beauty (as demais cores seguem o kit de marca) */
-  --color-brand-50: #fdf2f7;
-  --color-brand-100: #fce7f1;
-  --color-brand-200: #fad0e4;
-  --color-brand-300: #f6a8cb;
-  --color-brand-400: #ee73a8;
-  --color-brand-500: #e04a8a;
-  --color-brand-600: #c8306f;
-  --color-brand-700: #a72258;
-  --color-brand-800: #8a1e4a;
-  --color-brand-900: #731d40;
-  --color-brand-950: #460b23;
+  /* Orquídea — acento do Heeca Beauty (as demais cores seguem o kit de marca). O Nail usa o rosé #c8306f; aqui o tom vira violeta para os dois produtos não se confundirem no portal. */
+  --color-brand-50: #f8f0fb;
+  --color-brand-100: #f1e1f7;
+  --color-brand-200: #e4c4ef;
+  --color-brand-300: #d09be2;
+  --color-brand-400: #b86bd0;
+  --color-brand-500: #9e46b8;
+  --color-brand-600: #86329c;
+  --color-brand-700: #6e2880;
+  --color-brand-800: #5b2369;
+  --color-brand-900: #4c1f57;
+  --color-brand-950: #2e0f36;
 
   --font-display: var(--font-cormorant), Georgia, serif;
 }

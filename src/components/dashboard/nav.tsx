@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 const items = [
   { href: "/app", label: "Início", icon: HomeIcon, ownerOnly: false },
   { href: "/app/agenda", label: "Agenda", icon: CalendarIcon, ownerOnly: false },
-  { href: "/app/servicos", label: "Procedimentos", icon: NailIcon, ownerOnly: true },
+  { href: "/app/servicos", label: "Serviços", icon: ServicesIcon, ownerOnly: true },
   { href: "/app/clientes", label: "Clientes", icon: UsersIcon, ownerOnly: false },
   { href: "/app/portfolio", label: "Portfólio", icon: GalleryIcon, ownerOnly: true },
   { href: "/app/equipe", label: "Equipe", icon: TeamIcon, ownerOnly: true },
@@ -65,7 +65,7 @@ function HomeIcon(p: IconProps) {
 function CalendarIcon(p: IconProps) {
   return <svg {...base} {...p}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>;
 }
-function NailIcon(p: IconProps) {
+function ServicesIcon(p: IconProps) {
   // Frasco de esmalte
   return <svg {...base} {...p}><path d="M9 3h6v4H9z" /><path d="M8 7h8l1 4v8a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-8z" /><path d="M9 15h6" /></svg>;
 }

@@ -110,7 +110,7 @@ export async function verifySsoToken(token: string): Promise<SsoClaims> {
 
 /**
  * Troca as claims por (userId, tenantId): acha o estabelecimento pela assinatura e o usuário
- * pelo e-mail. No Nail o usuário pertence a um único tenant: se o e-mail existe em outro,
+ * pelo e-mail. No Beauty o usuário pertence a um único tenant: se o e-mail existe em outro,
  * recusa (não há "membership" para vincular). Usuário novo: OWNER/ADMIN do portal → OWNER; demais → STAFF.
  */
 export async function resolveSsoUser(c: SsoClaims) {

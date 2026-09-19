@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { applyEntitlement, platformEnabled, verifySignature, type Entitlement } from "@/lib/heeca/service";
 
-/** Portal → Nail: plano/status mudaram. Só espelha; nunca cobra. */
+/** Portal → Beauty: plano/status mudaram. Só espelha; nunca cobra. */
 export async function POST(req: Request) {
   if (!platformEnabled()) return NextResponse.json({ error: "integração com o portal desativada" }, { status: 503 });
   const raw = await req.text();

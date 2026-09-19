@@ -81,7 +81,7 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
             <div className="min-w-0">
               <h1 className="font-display text-3xl font-semibold leading-tight">{tenant.businessName}</h1>
               <p className="mt-0.5 text-sm text-brand-100">
-                {single ? `Nail Designer · ${tenant.professionals[0].name}` : `${tenant.professionals.length} profissionais`}
+                {single ? tenant.professionals[0].name : `${tenant.professionals.length} profissionais`}
               </p>
             </div>
           </div>

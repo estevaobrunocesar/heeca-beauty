@@ -12,7 +12,7 @@ export function RegisterForm() {
       {state && !state.ok && <Alert>{state.error}</Alert>}
       <div>
         <label className="label" htmlFor="businessName">Nome do estabelecimento</label>
-        <input id="businessName" name="businessName" required className="input" placeholder="Studio Ana Nails" />
+        <input id="businessName" name="businessName" required className="input" placeholder="Salão Bela Vista" />
       </div>
       <div>
         <label className="label" htmlFor="ownerName">Seu nome</label>

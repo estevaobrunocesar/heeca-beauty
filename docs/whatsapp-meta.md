@@ -118,7 +118,7 @@ Oi, {{1}}! 💖 Lembrando que seu horário em {{3}} está agendado para {{4}}, �
 |---|---|---|
 | {{1}} | `cliente` | Maria |
 | {{2}} | `servico` | Alongamento em Fibra de Vidro |
-| {{3}} | `estabelecimento` | Studio Ana Nails |
+| {{3}} | `estabelecimento` | Salão Bela Vista |
 | {{4}} | `quando` | amanhã |
 | {{5}} | `hora` | 14:00 |
 
@@ -147,7 +147,7 @@ Seu agendamento de {{1}} em {{2}} às {{3}} foi cancelado. Caso queira, é só m
 
 **Botões:**
 
-1. **Acessar site** — texto: `Agendar novamente`, tipo de URL: **Dinâmica**, URL: `{APP_URL}/agendar/{{1}}` (exemplo: `https://app.seudominio.com.br/agendar/studio-ana-nails`)
+1. **Acessar site** — texto: `Agendar novamente`, tipo de URL: **Dinâmica**, URL: `{APP_URL}/agendar/{{1}}` (exemplo: `https://app.seudominio.com.br/agendar/salao-bela-vista`)
 
 ### Pedido de pagamento (sinal) — `heeca_pedido_sinal`
 
@@ -172,7 +172,7 @@ Olá, {{1}}! Para garantir seu horário de *{{2}}* em {{3}} às {{4}}, pague o s
 
 **Botões:**
 
-1. **Acessar site** — texto: `Pagar sinal`, tipo de URL: **Dinâmica**, URL: `{APP_URL}/pagar/{{1}}` (exemplo: `https://app.seudominio.com.br/pagar/studio-ana-nails`)
+1. **Acessar site** — texto: `Pagar sinal`, tipo de URL: **Dinâmica**, URL: `{APP_URL}/pagar/{{1}}` (exemplo: `https://app.seudominio.com.br/pagar/salao-bela-vista`)
 
 ### Reagendamento — `heeca_agendamento_remarcado`
 

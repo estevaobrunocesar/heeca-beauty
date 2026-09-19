@@ -9,7 +9,7 @@ const display = Cormorant_Garamond({ variable: "--font-cormorant", subsets: ["la
 
 export const metadata: Metadata = {
   title: { default: "Heeca Beauty — Gestão para salões de beleza", template: "%s · Heeca Beauty" },
-  description: "Agenda online, confirmação por WhatsApp, portfólio e gestão de clientes para Nail Designers, manicures e studios de unhas.",
+  description: "Agenda online, confirmação por WhatsApp, portfólio e gestão de clientes para salões de beleza: cabelo, unhas, sobrancelhas, cílios e estética na mesma agenda.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

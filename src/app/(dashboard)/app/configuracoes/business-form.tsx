@@ -57,7 +57,7 @@ export function BusinessForm({ initial, base }: { initial: Values; base: string 
         <label className="label" htmlFor="instagram">Instagram</label>
         <div className="flex items-center overflow-hidden rounded-lg border border-zinc-300 bg-white focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-200">
           <span className="shrink-0 bg-zinc-50 px-3 py-2 text-sm text-zinc-500">@</span>
-          <input id="instagram" name="instagram" className="w-full px-3 py-2 text-sm focus:outline-none" defaultValue={initial.instagram} placeholder="ana.nails" />
+          <input id="instagram" name="instagram" className="w-full px-3 py-2 text-sm focus:outline-none" defaultValue={initial.instagram} placeholder="salaobelavista" />
         </div>
       </div>
 

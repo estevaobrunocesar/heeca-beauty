@@ -62,7 +62,7 @@ export const META_TEMPLATES: Record<OutboundKind, MetaTemplateSpec> = {
       { type: "quick_reply", text: "Remarcar", payload: (v) => `reschedule:${v.token}` },
       { type: "quick_reply", text: "Cancelar", payload: (v) => `cancel:${v.token}` },
     ],
-    example: ["Maria", "Alongamento em Fibra de Vidro", "Studio Ana Nails", "amanhã", "14:00"],
+    example: ["Maria", "Corte + Escova", "Salão Bela Vista", "amanhã", "14:00"],
   },
   CANCELLED: {
     defaultName: "heeca_agendamento_cancelado",
