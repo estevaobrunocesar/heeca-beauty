@@ -17,7 +17,7 @@
 
 export type CategoriaSugerida = { slug: string; nome: string; icone: string; exemplos: string[] };
 /** Campo da ficha técnica da cliente (e do registro de cada atendimento). Sugestões alimentam um datalist. */
-export type CampoFicha = { codigo: string; rotulo: string; sugestoes: string[]; placeholder?: string; segmento?: string };
+export type CampoFicha = { codigo: string; rotulo: string; sugestoes: string[]; placeholder?: string; segmento?: string; /** Mesmo campo em vários segmentos da marca: aparece uma vez, no primeiro segmento ativo que o declara. */ compartilhado?: boolean };
 
 export type Segmento = {
   slug: string;
@@ -178,28 +178,35 @@ const massagem: Segmento = {
   exemplos: { procedimento: "relaxante 60 min, drenagem", adicional: "escalda-pés, tempo extra", descricaoProcedimento: "Massagem de corpo inteiro com óleos vegetais e pressão moderada.", descricaoAdicional: "Escalda-pés com sais e ervas antes da sessão." },
   retorno: "Está chegando a hora da sua próxima sessão de massagem.",
   ficha: [
-    { codigo: "pressao", rotulo: "Pressão", sugestoes: ["Leve", "Moderada", "Forte"] },
-    { codigo: "foco", rotulo: "Áreas de foco", sugestoes: ["Lombar", "Cervical", "Ombros", "Pernas", "Corpo inteiro"] },
-    { codigo: "oleo", rotulo: "Óleo / aroma", sugestoes: ["Lavanda", "Neutro", "Eucalipto", "Sem óleo"] },
-    { codigo: "restricoes", rotulo: "Restrições", sugestoes: ["Gestante", "Hipertensão", "Varizes", "Pós-operatório", "Nenhuma"] },
+    { codigo: "pressao", rotulo: "Pressão", sugestoes: ["Leve", "Moderada", "Forte"], compartilhado: true },
+    { codigo: "foco", rotulo: "Áreas de foco", sugestoes: ["Lombar", "Cervical", "Ombros", "Pernas", "Pés", "Corpo inteiro"], compartilhado: true },
+    { codigo: "aroma", rotulo: "Óleo / aroma", sugestoes: ["Lavanda", "Eucalipto", "Laranja doce", "Neutro", "Sem óleo"], compartilhado: true },
+    { codigo: "restricoes", rotulo: "Restrições informadas", sugestoes: ["Gestante", "Hipertensão", "Varizes", "Pós-operatório", "Alergia a óleos/frutos secos", "Nenhuma"], compartilhado: true },
   ],
 };
 
-// Spa e terapias: conteúdo provisório; o pacote de segmento definitivo vem do chat Heeca_Spa (docs/SEGMENTO-SPA.md de lá).
+// Spa: pacote de segmento do chat Heeca_Spa (heeca_spa/docs/SEGMENTO-SPA.md, 20/09/2026). Com massagem + spa ligados,
+// as categorias de massagem vêm do segmento Massagem e aqui entram só experiências e tratamentos corporais.
 const spa: Segmento = {
   slug: "spa",
   nome: "Spa",
   icone: "🧖",
   publico: "spas e day spas",
   categorias: [
-    { slug: "rituais", nome: "Rituais e day spa", icone: "🧖", exemplos: ["Day spa", "Ritual relaxante", "Ritual de casal", "Banho de ofurô", "Sauna", "Esfoliação corporal", "Envolvimento corporal", "Escalda-pés"] },
+    { slug: "experiencias", nome: "Experiências Spa", icone: "🛁", exemplos: ["Day Spa", "Banho relaxante", "Banho de ofurô", "Sauna", "Hidroterapia", "Escalda-pés", "Ritual relaxante", "Ritual corporal", "Envolvimento corporal", "Experiência para casal", "Experiência romântica"] },
+    { slug: "corporais", nome: "Tratamentos corporais", icone: "🌿", exemplos: ["Esfoliação corporal", "Máscara corporal", "Argiloterapia", "Bambuterapia", "Ventosaterapia", "Reiki"] },
   ],
-  exemplos: { procedimento: "day spa, ritual relaxante", adicional: "esfoliação, ofurô", descricaoProcedimento: "Ritual de 2 horas com esfoliação, massagem e banho de ofurô.", descricaoAdicional: "Esfoliação corporal com sais antes da massagem." },
-  retorno: "Está chegando a hora do seu próximo ritual de cuidado.",
+  exemplos: { procedimento: "massagem relaxante, day spa", adicional: "aromaterapia, esfoliação", descricaoProcedimento: "Toques longos e suaves com óleo morno para soltar o corpo e aquietar a mente.", descricaoAdicional: "Óleos essenciais escolhidos conforme o seu momento." },
+  retorno: "Está chegando a hora do seu próximo ritual de bem-estar.",
   ficha: [
-    { codigo: "ritual", rotulo: "Ritual preferido", sugestoes: ["Relaxante", "Detox", "Casal", "Pós-treino"] },
-    { codigo: "temperatura", rotulo: "Temperatura", sugestoes: ["Amena", "Quente", "Muito quente"] },
-    { codigo: "restricoes", rotulo: "Restrições", sugestoes: ["Gestante", "Hipertensão", "Claustrofobia", "Pós-operatório", "Nenhuma"] },
+    { codigo: "ritual", rotulo: "Ritual / serviço preferido", sugestoes: ["Massagem relaxante", "Pedras quentes", "Day Spa", "Banho relaxante", "Ritual corporal", "Escalda-pés"], placeholder: "O que o cliente mais gosta de fazer aqui" },
+    { codigo: "pressao", rotulo: "Pressão", sugestoes: ["Leve", "Moderada", "Forte"], compartilhado: true },
+    { codigo: "foco", rotulo: "Áreas de foco", sugestoes: ["Ombros", "Cervical", "Lombar", "Pernas", "Pés", "Corpo inteiro"], compartilhado: true },
+    { codigo: "evitar", rotulo: "Áreas a evitar", sugestoes: ["Abdômen", "Lombar", "Pescoço", "Nenhuma"], placeholder: "Regiões que o cliente prefere não trabalhar" },
+    { codigo: "temperatura", rotulo: "Temperatura da sala", sugestoes: ["Mais quente", "Neutra", "Mais fresca"] },
+    { codigo: "aroma", rotulo: "Óleo / aroma", sugestoes: ["Lavanda", "Eucalipto", "Laranja doce", "Neutro", "Sem óleo"], compartilhado: true },
+    { codigo: "ambiente", rotulo: "Música e luz", sugestoes: ["Música instrumental baixa", "Sons da natureza", "Silêncio", "Luz baixa", "Velas"] },
+    { codigo: "restricoes", rotulo: "Restrições informadas", sugestoes: ["Gestante", "Hipertensão", "Varizes", "Pós-operatório", "Alergia a óleos/frutos secos", "Nenhuma"], compartilhado: true },
   ],
 };
 
@@ -235,7 +242,7 @@ export const MARCAS: Record<string, Marca> = {
     slug: "wellness",
     nome: "Heeca Wellness",
     publico: "spas, massoterapeutas e espaços de bem-estar",
-    tagline: "salas, terapeutas e pacotes em uma agenda só",
+    tagline: "organize sua agenda, encante seus clientes",
     descricao: "Agendamento e gestão para spas, massoterapeutas e espaços de bem-estar: massagem, spa e terapias corporais na mesma agenda, com confirmação por WhatsApp, ficha do cliente e retorno inteligente.",
     cor: "#c8306f",
     segmentos: [massagem, spa, terapias],
@@ -286,9 +293,17 @@ export function segmentosDe(marca: Marca, tenant: { segmentos: string[] }): Segm
 
 export const escolheuSegmentos = (marca: Marca, tenant: { segmentos: string[] }) => marca.segmentos.some((s) => tenant.segmentos.includes(s.slug));
 
-/** Ficha técnica do estabelecimento: união das fichas dos segmentos ativos, códigos prefixados (`unhas.formato`). */
+/**
+ * Ficha técnica do estabelecimento: união das fichas dos segmentos ativos, códigos prefixados (`unhas.formato`).
+ * Campo `compartilhado` (pressão, foco… em massagem e spa) entra uma vez, com o prefixo do primeiro segmento ativo.
+ */
 export function fichaDe(segmentos: Segmento[]): CampoFicha[] {
-  return segmentos.flatMap((s) => s.ficha.map((c) => ({ ...c, codigo: `${s.slug}.${c.codigo}`, segmento: s.slug })));
+  const compartilhados = new Set<string>();
+  return segmentos.flatMap((s) =>
+    s.ficha
+      .filter((c) => !c.compartilhado || (!compartilhados.has(c.codigo) && compartilhados.add(c.codigo)))
+      .map((c) => ({ ...c, codigo: `${s.slug}.${c.codigo}`, segmento: s.slug })),
+  );
 }
 
 /** Categorias sugeridas para os segmentos (sem repetir slug quando dois segmentos sugerem a mesma). */

@@ -69,3 +69,20 @@ describe("segmentos", () => {
     assert.deepEqual(cats.map((c) => c.slug), ["cabelo", "barba", "estetica-facial", "estetica-corporal"]);
   });
 });
+
+describe("wellness — campos compartilhados", () => {
+  const w = MARCAS.wellness;
+  it("massagem + spa: pressão, foco, aroma e restrições aparecem uma vez (no primeiro segmento ativo)", () => {
+    const codigos = fichaDe(segmentosDe(w, { segmentos: ["massagem", "spa"] })).map((c) => c.codigo);
+    assert.ok(codigos.includes("massagem.pressao") && !codigos.includes("spa.pressao"));
+    assert.ok(codigos.includes("spa.ritual") && codigos.includes("spa.evitar"));
+    assert.equal(new Set(codigos).size, codigos.length);
+  });
+  it("spa sozinho conserva pressão e restrições", () => {
+    const codigos = fichaDe(segmentosDe(w, { segmentos: ["spa"] })).map((c) => c.codigo);
+    assert.ok(codigos.includes("spa.pressao") && codigos.includes("spa.restricoes"));
+  });
+  it("massagem + spa: categorias de massagem vêm do Massage, spa acrescenta experiências e corporais", () => {
+    assert.deepEqual(categoriasSugeridas(segmentosDe(w, { segmentos: ["massagem", "spa"] })).map((c) => c.slug), ["relaxante", "terapeutica", "drenagem", "experiencias", "corporais"]);
+  });
+});
