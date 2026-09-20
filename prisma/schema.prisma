@@ -17,6 +17,7 @@ model Tenant {
   marca        String   @default("beauty") // produto do motor multi-marca (beauty | wellness) — lib/marca.ts
   segmentos    String[] @default([]) // segmentos que o estabelecimento atende (slugs de marca.segmentos); vazio = ainda não escolheu
   salasAtivas  Boolean  @default(false) // agenda por sala e recursos (spa, clínica): liga o cadastro de salas e o "onde" no serviço
+  faltaConsomeSessao Boolean @default(true) // pacotes: falta (NO_SHOW) desconta uma sessão? Política do estabelecimento
   slug         String  @unique // app.com.br/agendar/<slug>
   businessName String
   ownerName    String
@@ -89,6 +90,9 @@ model Tenant {
   blocks            ScheduleBlock[]
   rooms             Room[]
   resources         Resource[]
+  packages          Package[]
+  clientPackages    ClientPackage[]
+  packageSessions   PackageSession[]
   messages          WhatsappMessage[]
   templates         MessageTemplate[]
   appointmentEvents AppointmentEvent[]
@@ -187,6 +191,8 @@ model ServiceCategory {
   tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   services  Service[]
   portfolio PortfolioItem[]
+  packages  Package[]
+  clientPackages ClientPackage[]
 
   @@unique([tenantId, slug])
   @@index([tenantId, sortOrder])
@@ -224,6 +230,8 @@ model Service {
   professionals ProfessionalService[]
   rooms         ServiceRoom[]
   resources     ServiceResource[]
+  packages      Package[]
+  clientPackages ClientPackage[]
 
   @@index([tenantId, active, sortOrder])
   @@index([tenantId, categoryId])
@@ -437,6 +445,7 @@ model Client {
   tenant                Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   preferredProfessional Professional?     @relation("ClientPreferredProfessional", fields: [preferredProfessionalId], references: [id], onDelete: SetNull)
   appointments          Appointment[]
+  packages              ClientPackage[]
   messages              WhatsappMessage[]
 
   @@unique([tenantId, phone])
@@ -542,6 +551,7 @@ model AppointmentItem {
   room         Room?              @relation(fields: [roomId], references: [id], onDelete: SetNull)
   addOns       AppointmentAddOn[]
   resources    AppointmentItemResource[]
+  packageSession PackageSession?
 
   @@index([appointmentId, sortOrder])
   @@index([roomId, startsAt, endsAt])
@@ -688,4 +698,93 @@ model PortfolioItem {
   category ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, visible, sortOrder])
+}
+
+// ───────── Pacotes de sessões ("5 massagens", "10 sessões de qualquer serviço") ─────────
+
+/** Catálogo: o que o estabelecimento vende. serviceId = só aquele serviço; categoryId = qualquer da categoria; ambos nulos = livre. */
+model Package {
+  id            String   @id @default(cuid())
+  tenantId      String
+  name          String
+  description   String?
+  serviceId     String?
+  categoryId    String?
+  sessionsCount Int
+  validityDays  Int? // prazo para usar a partir da compra; null = sem validade
+  priceCents    Int
+  active        Boolean  @default(true)
+  onlineVisible Boolean  @default(true) // aparece na página pública (vitrine → WhatsApp)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  service  Service?         @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  category ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sold     ClientPackage[]
+
+  @@index([tenantId, active, sortOrder])
+}
+
+enum ClientPackageStatus {
+  ACTIVE // em andamento: ainda há sessões a realizar dentro da validade
+  COMPLETED // todas as sessões consumidas
+  EXPIRED // validade venceu com sessões sobrando
+  CANCELLED // encerrado pelo estabelecimento (desistência, estorno…)
+}
+
+/** Pacote vendido a um cliente: snapshot do catálogo no momento da venda. O saldo é calculado pelas sessões, nunca gravado. */
+model ClientPackage {
+  id            String              @id @default(cuid())
+  tenantId      String
+  clientId      String
+  packageId     String?
+  serviceId     String?
+  categoryId    String?
+  name          String
+  sessionsTotal Int
+  startsAt      DateTime            @db.Date
+  expiresAt     DateTime?           @db.Date // null = sem validade; vale até o fim do dia
+  priceCents    Int
+  status        ClientPackageStatus @default(ACTIVE)
+  notes         String?
+  closedAt      DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client   Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  package  Package?         @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  service  Service?         @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  category ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sessions PackageSession[]
+
+  @@index([tenantId, status, expiresAt])
+  @@index([clientId, status])
+}
+
+enum PackageSessionStatus {
+  SCHEDULED // vinculada a um item de visita ativa (reserva a sessão)
+  DONE // realizada — consome uma sessão
+  NO_SHOW // cliente faltou — consome conforme Tenant.faltaConsomeSessao
+  CANCELLED // horário cancelado — não consome
+}
+
+/** Uma sessão nasce quando um item de visita é vinculado ao pacote; espelha o status da visita. */
+model PackageSession {
+  id              String               @id @default(cuid())
+  tenantId        String
+  clientPackageId String
+  itemId          String?              @unique
+  status          PackageSessionStatus @default(SCHEDULED)
+  performedAt     DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientPackage ClientPackage    @relation(fields: [clientPackageId], references: [id], onDelete: Cascade)
+  item          AppointmentItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([clientPackageId, status])
 }

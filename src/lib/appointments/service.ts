@@ -5,6 +5,7 @@ import type { Tenant } from "@/generated/prisma/client";
 import type { AppointmentActor, AppointmentSource, AppointmentStatus } from "@/generated/prisma/enums";
 import { normalizePhone } from "@/lib/phone";
 import { getVisitSlots, occupiedUtc } from "@/lib/scheduling/service";
+import { espelharVisita, vincularVisita } from "@/lib/packages/service";
 import type { VisitItem } from "@/lib/scheduling/availability";
 import { zonedDateTimeToUtc } from "@/lib/dates";
 import { sendAppointmentMessage } from "@/lib/whatsapp/service";
@@ -233,6 +234,8 @@ export async function createAppointment(input: CreateInput) {
   );
 
   // Efeitos colaterais fora da transação: o agendamento já está garantido.
+  // Pacote ativo do cliente que cubra o serviço? Reserva a sessão já.
+  await vincularVisita(tenant, appointment.id);
   if (depositCents > 0) {
     try {
       await createDepositCharge(appointment.id, depositCents, appointment.expiresAt ?? paymentDeadline);
@@ -289,6 +292,8 @@ export async function transition(input: TransitionInput) {
   // Concluída: apura a comissão de cada item com a regra vigente (SPEC §17). Reabrir (COMPLETED → outro) limpa.
   if (to === "COMPLETED") await settleCommissions(appt.id);
   else if (appt.status === "COMPLETED") await db.appointmentItem.updateMany({ where: { appointmentId: appt.id, commissionPaidAt: null }, data: { commissionCents: null } });
+  // Sessões de pacote espelham o status da visita (realizada debita; cancelada libera; falta conforme a política).
+  await espelharVisita(appt.id);
 
   if (isCancel) {
     // Sinal: cobrança pendente é encerrada; sinal pago é estornado conforme a política.

@@ -11,6 +11,8 @@ import { averageIntervalDays, isRecurring, predictReturn, returnMessage, RETURN_
 import { perfilDoTenant } from "@/lib/marca-atual";
 import { fraseDeRetorno } from "@/lib/marca";
 import { lerFicha, resumoFicha } from "@/lib/clients/ficha";
+import { progresso, STATUS_PACOTE } from "@/lib/packages/rules";
+import { regraFaltaDe } from "@/lib/packages/service";
 import { describeVisit } from "@/lib/appointments/summary";
 import { ClientForm } from "./client-form";
 
@@ -19,9 +21,14 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
   const { tenant } = await requireAuth();
   const client = await db.client.findFirst({
     where: { id, tenantId: tenant.id },
-    include: { appointments: { orderBy: { startsAt: "desc" }, take: 50, include: { items: { orderBy: { sortOrder: "asc" }, select: { serviceName: true } } } } },
+    include: {
+      appointments: { orderBy: { startsAt: "desc" }, take: 50, include: { items: { orderBy: { sortOrder: "asc" }, select: { serviceName: true } } } },
+      packages: { orderBy: { createdAt: "desc" }, include: { sessions: { select: { status: true } } } },
+    },
   });
   if (!client) notFound();
+  const regra = regraFaltaDe(tenant);
+  const pacotes = client.packages.map((pk) => ({ ...pk, p: progresso(pk, pk.sessions, regra) })).filter((x) => x.status === "ACTIVE" || x.p.agendadas > 0).slice(0, 5);
 
   const now = new Date();
   const completed = client.appointments.filter((a) => a.status === "COMPLETED");
@@ -79,6 +86,23 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
             </div>
           )}
           {noShows > 0 && <p className="text-xs text-rose-600">⚠️ {noShows} falta(s) registrada(s).</p>}
+
+          {pacotes.length > 0 && (
+            <section className="card p-5">
+              <div className="flex items-center justify-between">
+                <h2 className="font-medium">Pacotes</h2>
+                <Link href={`/app/pacotes/novo?cliente=${client.id}`} className="text-xs text-zinc-500 hover:underline">+ vender pacote</Link>
+              </div>
+              <ul className="mt-2 space-y-2 text-sm">
+                {pacotes.map((pk) => (
+                  <li key={pk.id} className="flex items-center justify-between gap-2">
+                    <Link href={`/app/pacotes/${pk.id}`} className="min-w-0 truncate hover:underline">{pk.name}</Link>
+                    <span className="shrink-0 text-xs text-zinc-500">{pk.p.restantes}/{pk.p.total} restantes{pk.p.agendadas ? ` · ${pk.p.agendadas} agendada(s)` : ""}{pk.status !== "ACTIVE" ? ` · ${STATUS_PACOTE[pk.status]}` : ""}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {topServices.length > 0 && (
             <section className="card p-5">

@@ -18,6 +18,7 @@ export async function register() {
 
   if (process.env.CRON_INPROCESS !== "true") return;
   const { expirePendingAppointments, sendDueReminders } = await import("@/lib/appointments/service");
+  const { expirarPacotes } = await import("@/lib/packages/service");
   const every = (label: string, ms: number, fn: () => Promise<number>) => {
     const tick = async () => {
       try {
@@ -32,5 +33,6 @@ export async function register() {
   };
   every("lembretes enviados", 15 * 60_000, () => sendDueReminders());
   every("pendentes expirados", 5 * 60_000, () => expirePendingAppointments());
+  every("pacotes vencidos", 6 * 60 * 60_000, () => expirarPacotes());
   console.log("[cron] interno ativo: lembretes a cada 15 min, expiração a cada 5 min");
 }

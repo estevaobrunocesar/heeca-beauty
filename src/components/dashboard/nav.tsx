@@ -13,6 +13,7 @@ const items: { href: string; label: string; icon: (p: IconProps) => React.JSX.El
   { href: "/app/clientes", label: "Clientes", icon: UsersIcon, access: "all" },
   { href: "/app/comissoes", label: "Comissões", icon: CommissionIcon, access: "commission" },
   { href: "/app/salas", label: "Salas", icon: RoomIcon, access: "manage", opcional: "salas" },
+  { href: "/app/pacotes", label: "Pacotes", icon: PackageIcon, access: "manage" },
   { href: "/app/portfolio", label: "Portfólio", icon: GalleryIcon, access: "manage" },
   { href: "/app/equipe", label: "Equipe", icon: TeamIcon, access: "manage" },
   { href: "/app/configuracoes", label: "Configurações", icon: SettingsIcon, access: "manage" },
@@ -89,6 +90,9 @@ function UsersIcon(p: IconProps) {
 }
 function TeamIcon(p: IconProps) {
   return <svg {...base} {...p}><circle cx="8" cy="7" r="3" /><circle cx="16" cy="9" r="2.5" /><path d="M2 20a6 6 0 0 1 12 0" /><path d="M14 20a5 5 0 0 1 8 0" /></svg>;
+}
+function PackageIcon(p: IconProps) {
+  return <svg {...base} {...p}><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="M3 8l9 5 9-5" /><path d="M12 13v8" /></svg>;
 }
 function RoomIcon(p: IconProps) {
   return <svg {...base} {...p}><path d="M3 21V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v16" /><path d="M3 21h18" /><path d="M9 21v-6h6v6" /><path d="M8 9h2M14 9h2" /></svg>;

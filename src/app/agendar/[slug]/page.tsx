@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { minutesToHHMM, todayKey } from "@/lib/dates";
 import { formatPhone, whatsappLink } from "@/lib/phone";
+import { formatCents } from "@/lib/money";
 import { computeDepositCents } from "@/lib/payments/deposit";
 import { policyItems, hasPolicies } from "@/lib/policies";
 import { BookingWizard } from "./booking-wizard";
@@ -21,6 +22,7 @@ async function loadTenant(slug: string) {
         include: { services: { select: { serviceId: true } }, availability: { orderBy: { weekday: "asc" } } },
       },
       portfolio: { where: { visible: true }, orderBy: [{ sortOrder: "asc" }, { publishedAt: "desc" }], take: 24, include: { category: { select: { name: true } } } },
+      packages: { where: { active: true, onlineVisible: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, description: true, sessionsCount: true, validityDays: true, priceCents: true } },
     },
   });
 }
@@ -130,6 +132,27 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
               <span className="text-xs text-zinc-500">{tenant.portfolio.length} foto{tenant.portfolio.length > 1 ? "s" : ""}</span>
             </div>
             <Gallery items={tenant.portfolio.map((p) => ({ id: p.id, imageUrl: p.imageUrl, title: p.title, description: p.description, category: p.category?.name ?? null }))} />
+          </section>
+        )}
+
+        {/* Pacotes (vitrine → WhatsApp) */}
+        {tenant.packages.length > 0 && (
+          <section className="border-b border-zinc-100 px-5 py-5">
+            <h2 className="font-display text-2xl font-semibold text-brand-950">Pacotes</h2>
+            <ul className="mt-3 space-y-2">
+              {tenant.packages.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-3 text-sm">
+                  <div className="min-w-0">
+                    <div className="font-medium">{p.name}</div>
+                    <div className="text-xs text-zinc-500">{p.sessionsCount} sessões{p.validityDays ? ` · válido por ${p.validityDays} dias` : ""}{p.description ? ` · ${p.description}` : ""}</div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="font-semibold">{formatCents(p.priceCents)}</div>
+                    {tenant.phone && <a href={whatsappLink(tenant.phone, `Olá! Tenho interesse no pacote "${p.name}".`)} target="_blank" rel="noreferrer" className="text-xs text-emerald-700 hover:underline">quero este</a>}
+                  </div>
+                </li>
+              ))}
+            </ul>
           </section>
         )}
 
