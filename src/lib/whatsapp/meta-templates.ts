@@ -101,7 +101,8 @@ export function metaTemplateLanguage(): string {
 export function metaTemplatesEnabled(): boolean {
   const flag = process.env.WHATSAPP_USE_TEMPLATES?.trim().toLowerCase();
   if (flag) return flag !== "false" && flag !== "0";
-  return (process.env.WHATSAPP_PROVIDER ?? "console").toLowerCase() === "meta";
+  const p = (process.env.WHATSAPP_PROVIDER ?? "console").toLowerCase();
+  return p === "meta" || p === "notify"; // pelo Notify a entrega final também é a Meta: templates fora da janela de 24 h
 }
 
 /** Renderiza o corpo do template Meta com os valores (para log/pré-visualização). */

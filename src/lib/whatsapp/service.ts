@@ -5,6 +5,7 @@ import { formatCents } from "@/lib/money";
 import { paymentPageUrl } from "@/lib/payments/service";
 import { describeProfessionals, describeVisit } from "@/lib/appointments/summary";
 import { getWhatsappProvider } from "./index";
+import { HeecaNotifyProvider } from "./providers/notify";
 import { DEFAULT_TEMPLATES, renderTemplate } from "./templates";
 import type { QuickReplyButton, TemplateMessage } from "./provider";
 import {
@@ -67,7 +68,9 @@ export async function sendAppointmentMessage(appointmentId: string, kind: Outbou
     link_pagamento: paymentPageUrl(appt.confirmationToken),
   };
 
-  const provider = getWhatsappProvider();
+  const base = getWhatsappProvider();
+  // Notify: leva estabelecimento e referência no envelope (cota, relatório e callback roteado)
+  const provider = base instanceof HeecaNotifyProvider ? base.withContext({ tenantId: tenant.id, tenantName: tenant.businessName, ref: appt.id }) : base;
   const useTemplate = metaTemplatesEnabled() && typeof provider.sendTemplate === "function";
 
   // Corpo registrado no histórico: o template da Meta ou o texto editável do tenant.
