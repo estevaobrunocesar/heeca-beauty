@@ -14,6 +14,8 @@ datasource db {
 
 model Tenant {
   id           String  @id @default(cuid())
+  marca        String   @default("beauty") // produto do motor multi-marca (beauty | wellness) — lib/marca.ts
+  segmentos    String[] @default([]) // segmentos que o estabelecimento atende (slugs de marca.segmentos); vazio = ainda não escolheu
   slug         String  @unique // app.com.br/agendar/<slug>
   businessName String
   ownerName    String
@@ -89,6 +91,8 @@ model Tenant {
   appointmentEvents AppointmentEvent[]
   payments          Payment[]
   portfolio         PortfolioItem[]
+
+  @@index([marca])
 }
 
 enum DepositMode {
@@ -325,9 +329,9 @@ model Client {
   birthDate               DateTime? @db.Date // aniversário → campanha (SPEC §13)
   preferredProfessionalId String?
 
-  // Ficha técnica (herdada do Nail; útil para unhas, ainda faz sentido em salão completo)
-  nailShape               String? // almond, quadrado, stiletto, bailarina…
-  nailSize                String? // curto, médio, longo (ou numeração do molde)
+  // Ficha técnica configurável por segmento (lib/marca.ts → fichaDe): { ["unhas.formato"]: valor, … }.
+  // Atualizada automaticamente quando a profissional registra um atendimento (Appointment.registro).
+  ficha                   Json?
   allergies               String? // produtos a evitar
   maintenanceIntervalDays Int? // "costuma voltar a cada 20 dias" → base da lista de reativação (SPEC §14)
 
@@ -383,6 +387,7 @@ model Appointment {
 
   notes             String? // observação do cliente
   internalNotes     String? // anotações do salão
+  registro          Json? // o que foi feito nesta visita: { [codigo da ficha]: valor } (mesmos códigos de fichaDe)
   confirmationToken String    @unique
   confirmedAt       DateTime?
   cancelledAt       DateTime?

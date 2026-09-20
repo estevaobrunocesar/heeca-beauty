@@ -11,7 +11,8 @@ import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import { fromZonedTime } from "date-fns-tz";
 import { addDays, format, set } from "date-fns";
-import { DEFAULT_CATEGORIES } from "../src/lib/services/categories";
+import { defaultCategories } from "../src/lib/services/categories";
+import { MARCAS, segmentosDe } from "../src/lib/marca";
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
 const TZ = "America/Sao_Paulo";
@@ -32,6 +33,8 @@ async function main() {
   const tenant = await db.tenant.create({
     data: {
       slug: SLUG,
+      marca: "beauty",
+      segmentos: ["cabelo", "unhas", "sobrancelhas"],
       businessName: "Salão Bela Vista",
       ownerName: "Ana Ribeiro",
       description: "Cabelo, unhas, sobrancelhas e barbearia no mesmo lugar. Agende vários serviços numa única visita e saia pronta.",
@@ -50,9 +53,9 @@ async function main() {
     },
   });
 
-  // Categorias padrão (SPEC §7) — o mesmo que o bootstrap faz para um salão novo
+  // Categorias sugeridas pelos segmentos do salão — o mesmo que o bootstrap faz para um salão novo
   const categories = await Promise.all(
-    DEFAULT_CATEGORIES.map((c, sortOrder) => db.serviceCategory.create({ data: { tenantId: tenant.id, name: c.name, slug: c.slug, sortOrder } })),
+    defaultCategories(segmentosDe(MARCAS.beauty, tenant)).map((c, sortOrder) => db.serviceCategory.create({ data: { tenantId: tenant.id, name: c.name, slug: c.slug, sortOrder } })),
   );
   const cat = (slug: string) => categories.find((c) => c.slug === slug)!.id;
 
@@ -133,7 +136,7 @@ async function main() {
     [
       { name: "Maria Oliveira", phone: "+5511988880001", birthDate: new Date("1990-03-14"), preferredProfessionalId: ana.id, maintenanceIntervalDays: 30, notes: "Faz escova toda semana antes de eventos. Prefere a Ana." },
       { name: "Juliana Costa", phone: "+5511988880002", allergies: "Sensibilidade a amônia", notes: "Só coloração sem amônia." },
-      { name: "Camila Ferreira", phone: "+5511988880003", email: "camila@example.com", nailShape: "Almond", nailSize: "Médio" },
+      { name: "Camila Ferreira", phone: "+5511988880003", email: "camila@example.com", ficha: { "unhas.formato": "Almond", "unhas.tamanho": "Médio" } },
       { name: "Pedro Almeida", phone: "+5511988880004", preferredProfessionalId: carlos.id, notes: "Corte na máquina 2 nas laterais." },
     ].map((c) => db.client.create({ data: { ...c, tenantId: tenant.id } })),
   );

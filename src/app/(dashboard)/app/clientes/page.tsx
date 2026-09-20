@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
+import { perfilDoTenant } from "@/lib/marca-atual";
+import { lerFicha, resumoFicha } from "@/lib/clients/ficha";
 import { fmtDate } from "@/lib/dates";
 import { formatPhone, whatsappLink } from "@/lib/phone";
 import { PageHeader } from "@/components/ui/page-header";
@@ -12,6 +14,7 @@ export const metadata: Metadata = { title: "Clientes" };
 export default async function ClientsPage({ searchParams }: PageProps<"/app/clientes">) {
   const sp = await searchParams;
   const { tenant } = await requireAuth();
+  const { ficha } = perfilDoTenant(tenant);
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
 
   const clients = await db.client.findMany({
@@ -56,7 +59,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
                   <td className="px-4 py-2 font-medium"><Link href={`/app/clientes/${c.id}`} className="hover:underline">{c.name}</Link></td>
                   <td className="px-4 py-2"><a href={whatsappLink(c.phone)} target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline">{formatPhone(c.phone)}</a></td>
                   <td className="px-4 py-2 text-xs text-zinc-500">
-                    {[c.nailShape, c.nailSize].filter(Boolean).join(" · ") || "—"}
+                    {resumoFicha(ficha, lerFicha(c.ficha, ficha)) || "—"}
                     {c.allergies && <span className="ml-1 text-rose-600" title={c.allergies}>⚠️</span>}
                   </td>
                   <td className="px-4 py-2 tabular-nums">{c._count.appointments}</td>

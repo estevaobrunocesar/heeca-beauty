@@ -7,7 +7,10 @@ import { formatCents } from "@/lib/money";
 import { formatPhone, whatsappLink } from "@/lib/phone";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ACTIVE_STATUSES } from "@/lib/appointments/status";
-import { averageIntervalDays, isRecurring, maintenanceStatus } from "@/lib/clients/insights";
+import { averageIntervalDays, isRecurring, predictReturn, returnMessage, RETURN_STAGE_LABELS, type ReturnStage } from "@/lib/clients/insights";
+import { perfilDoTenant } from "@/lib/marca-atual";
+import { fraseDeRetorno } from "@/lib/marca";
+import { lerFicha, resumoFicha } from "@/lib/clients/ficha";
 import { describeVisit } from "@/lib/appointments/summary";
 import { ClientForm } from "./client-form";
 
@@ -28,7 +31,9 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
   const lastVisit = completedDates[0] ?? null; // lista já vem em ordem decrescente
   const observed = averageIntervalDays(completedDates);
   const hasUpcoming = client.appointments.some((a) => a.startsAt > now && ACTIVE_STATUSES.includes(a.status));
-  const maintenance = maintenanceStatus({ lastCompletedAt: lastVisit, intervalDays: client.maintenanceIntervalDays, observedIntervalDays: observed, hasUpcoming, now });
+  const ret = predictReturn({ completedDates, declaredIntervalDays: client.maintenanceIntervalDays, hasUpcoming, now });
+  const { segmentos, ficha: campos } = perfilDoTenant(tenant);
+  const grupos = Object.fromEntries(segmentos.map((s) => [s.slug, s.nome]));
   const recurring = isRecurring(completedDates, now);
 
   // Serviços realizados (contagem por item, não por visita)
@@ -45,9 +50,11 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
             id={client.id}
             initial={{
               name: client.name, phone: formatPhone(client.phone), email: client.email ?? "", notes: client.notes ?? "",
-              nailShape: client.nailShape ?? "", nailSize: client.nailSize ?? "", allergies: client.allergies ?? "",
+              ficha: lerFicha(client.ficha, campos), allergies: client.allergies ?? "",
               maintenanceIntervalDays: client.maintenanceIntervalDays,
             }}
+            campos={campos}
+            grupos={grupos}
           />
           <Link href={`/app/agenda/novo?cliente=${encodeURIComponent(client.phone)}`} className="btn-primary w-full">Agendar para esta cliente</Link>
           <a href={whatsappLink(client.phone)} target="_blank" rel="noreferrer" className="btn-secondary w-full">💬 Chamar no WhatsApp</a>
@@ -61,11 +68,14 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
             <Stat value={observed ? `~${observed} dias` : "—"} label="frequência" hint={recurring ? "cliente recorrente ✨" : undefined} />
           </section>
 
-          {maintenance.kind !== "unknown" && (
-            <div className={`rounded-xl border px-4 py-3 text-sm ${maintenance.kind === "due" ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
-              {maintenance.kind === "due"
-                ? <>💅 Manutenção prevista para <strong>{fmtDate(maintenance.dueAt, tenant.timezone)}</strong> — já se passaram {maintenance.daysOverdue} dia(s). Que tal chamar no WhatsApp?</>
-                : <>✅ Próxima manutenção prevista para <strong>{fmtDate(maintenance.dueAt, tenant.timezone)}</strong> (em {maintenance.daysLeft} dia(s)).</>}
+          {(ret.stage !== "unknown" || ret.dueAt) && (
+            <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${ret.stage === "due" || ret.stage === "overdue" ? "border-amber-300 bg-amber-50 text-amber-900" : ret.stage === "inactive" ? "border-zinc-300 bg-zinc-50 text-zinc-700" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+              <span>
+                {ret.stage === "inactive" ? <>💤 Sem atendimento há <strong>{ret.daysSinceLast} dias</strong> — cliente inativa.</>
+                  : ret.stage === "unknown" && ret.dueAt ? <>✅ Retorno previsto para <strong>{fmtDate(ret.dueAt, tenant.timezone)}</strong> (em {ret.daysUntilDue} dia(s)).</>
+                  : <>✨ <strong>{RETURN_STAGE_LABELS[ret.stage as Exclude<ReturnStage, "unknown">]}</strong>{ret.dueAt ? <> — retorno previsto para <strong>{fmtDate(ret.dueAt, tenant.timezone)}</strong></> : null}{ret.source === "learned" && ret.intervalDays ? <> · ciclo aprendido ~{ret.intervalDays} d</> : null}.</>}
+              </span>
+              {ret.stage !== "unknown" && <a href={whatsappLink(client.phone, returnMessage(client.name, ret.stage, fraseDeRetorno(segmentos)))} target="_blank" rel="noreferrer" className="btn-ghost shrink-0 px-2 py-1 text-xs">💬 Chamar no WhatsApp</a>}
             </div>
           )}
           {noShows > 0 && <p className="text-xs text-rose-600">⚠️ {noShows} falta(s) registrada(s).</p>}
@@ -91,6 +101,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
                   <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                     <Link href={`/app/agendamentos/${a.id}`} className="hover:underline">
                       <span className="font-medium">{fmtDateTime(a.startsAt, tenant.timezone)}</span> · {describeVisit(a.items)} · {formatCents(a.priceCents)}
+                      {a.registro ? <span className="block text-xs text-zinc-500">✍️ {resumoFicha(campos, lerFicha(a.registro, campos)) || "registro sem campos"}</span> : null}
                     </Link>
                     <StatusBadge status={a.status} />
                   </li>

@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { platformEnabled, portalProductUrl } from "@/lib/heeca/service";
+import { marcaAtual } from "@/lib/marca-atual";
 import { z } from "zod";
 import { createHash, randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
@@ -22,7 +23,8 @@ const registerSchema = z.object({
 });
 
 export async function registerAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (platformEnabled()) return fail(`Crie sua conta pelo portal Heeca: ${portalProductUrl()}`);
+  const marca = await marcaAtual();
+  if (platformEnabled()) return fail(`Crie sua conta pelo portal Heeca: ${portalProductUrl(marca)}`);
   const parsed = registerSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail(parsed.error.issues[0].message);
   const data = parsed.data;
@@ -35,7 +37,7 @@ export async function registerAction(_prev: ActionResult, formData: FormData): P
   const passwordHash = await hashPassword(data.password);
 
   const { user } = await db.$transaction((tx) =>
-    bootstrapTenant(tx, { slug, businessName: data.businessName, ownerName: data.ownerName, ownerEmail: data.email, passwordHash, phone }),
+    bootstrapTenant(tx, { slug, businessName: data.businessName, ownerName: data.ownerName, ownerEmail: data.email, passwordHash, phone, marca: marca.slug }),
   );
 
   await createSession({ userId: user.id, tenantId: user.tenantId });

@@ -9,7 +9,10 @@ import { formatCents } from "@/lib/money";
 import { AppointmentCard } from "@/components/dashboard/appointment-card";
 import { Alert } from "@/components/ui/alert";
 import { getAvailableSlots } from "@/lib/scheduling/service";
-import { isRecurring, maintenanceStatus, averageIntervalDays } from "@/lib/clients/insights";
+import { isRecurring, predictReturn, returnMessage, RETURN_STAGE_LABELS, RETURN_STAGE_ORDER, type ReturnStage } from "@/lib/clients/insights";
+import { whatsappLink } from "@/lib/phone";
+import { perfilDoTenant } from "@/lib/marca-atual";
+import { escolheuSegmentos, fraseDeRetorno } from "@/lib/marca";
 import { cardInclude, withProfessionals } from "@/lib/appointments/queries";
 import { describeProfessionals } from "@/lib/appointments/summary";
 
@@ -28,7 +31,8 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
   const dayEnd = zonedDateTimeToUtc(addDaysToKey(today, 1), 0, tz);
   const monthStart = zonedDateTimeToUtc(today.slice(0, 8) + "01", 0, tz);
   const in30 = new Date(now.getTime() + 30 * 86_400_000);
-  const since90 = new Date(now.getTime() - 90 * 86_400_000);
+  const since365 = new Date(now.getTime() - 365 * 86_400_000);
+  const { marca, segmentos } = perfilDoTenant(tenant);
 
   const [todayList, upcoming, pendingCount, monthStats, forecast, topServices, clientsCount, servicesCount, cancelledMonth, recentCompleted, freeSlots] = await Promise.all([
     db.appointment.findMany({
@@ -52,9 +56,9 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
     db.client.count({ where: { tenantId: tenant.id } }),
     db.service.count({ where: { tenantId: tenant.id, active: true, deletedAt: null, isAddOn: false } }),
     db.appointment.count({ where: { ...scope, startsAt: { gte: monthStart }, status: { in: ["CANCELLED_BY_CLIENT", "CANCELLED_BY_PROFESSIONAL"] } } }),
-    // Base para "clientes recorrentes" e "manutenções vencidas": concluídos dos últimos 90 dias
+    // Base para "clientes recorrentes" e "retornos": concluídos do último ano (inativa = 90+ dias sem vir)
     db.appointment.findMany({
-      where: { ...scope, status: "COMPLETED", startsAt: { gte: since90 } },
+      where: { ...scope, status: "COMPLETED", startsAt: { gte: since365 } },
       select: { clientId: true, startsAt: true, client: { select: { id: true, name: true, phone: true, maintenanceIntervalDays: true } } },
       orderBy: { startsAt: "desc" },
     }),
@@ -67,7 +71,7 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
     })(),
   ]);
 
-  // Clientes recorrentes e manutenções vencidas (regras em src/lib/clients/insights.ts)
+  // Clientes recorrentes e retorno inteligente (regras em src/lib/clients/insights.ts; vocabulário do segmento)
   const byClient = new Map<string, { client: (typeof recentCompleted)[number]["client"]; dates: Date[] }>();
   for (const a of recentCompleted) {
     const e = byClient.get(a.clientId) ?? { client: a.client, dates: [] };
@@ -76,20 +80,25 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
   }
   const recurringCount = [...byClient.values()].filter((e) => isRecurring(e.dates, now)).length;
   const upcomingClientIds = new Set((await db.appointment.findMany({ where: { ...scope, startsAt: { gte: now }, status: { in: ACTIVE_STATUSES } }, select: { clientId: true } })).map((a) => a.clientId));
-  const maintenanceDue = [...byClient.values()]
-    .map((e) => ({
-      client: e.client,
-      status: maintenanceStatus({ lastCompletedAt: e.dates[0], intervalDays: e.client.maintenanceIntervalDays, observedIntervalDays: averageIntervalDays(e.dates), hasUpcoming: upcomingClientIds.has(e.client.id), now }),
-    }))
-    .filter((x): x is { client: typeof x.client; status: Extract<ReturnType<typeof maintenanceStatus>, { kind: "due" }> } => x.status.kind === "due")
-    .sort((a, b) => b.status.daysOverdue - a.status.daysOverdue)
-    .slice(0, 5);
+  const returns = [...byClient.values()]
+    .map((e) => ({ client: e.client, p: predictReturn({ completedDates: e.dates, declaredIntervalDays: e.client.maintenanceIntervalDays, hasUpcoming: upcomingClientIds.has(e.client.id), now }) }))
+    .filter((x) => x.p.stage !== "unknown")
+    .sort((a, b) => RETURN_STAGE_ORDER[a.p.stage] - RETURN_STAGE_ORDER[b.p.stage] || (a.p.daysUntilDue ?? 0) - (b.p.daysUntilDue ?? 0))
+    .slice(0, 6);
+  const convite = fraseDeRetorno(segmentos);
+  const pedirSegmentos = ctx.canManage && !escolheuSegmentos(marca, tenant);
 
   const activeToday = todayList.filter((a) => ACTIVE_STATUSES.includes(a.status));
   const next = activeToday.find((a) => a.endsAt > now) ?? upcoming[0] ?? null;
 
   return (
     <>
+      {pedirSegmentos && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50/60 px-4 py-3 text-sm">
+          <span>✨ <strong>O que você faz?</strong> Marque os segmentos do seu negócio (cabelo, unhas, cílios…) para o {marca.nome} montar categorias, ficha e mensagens do seu jeito.</span>
+          <Link href="/app/configuracoes/segmentos" className="btn-primary shrink-0 px-3 py-1.5 text-xs">Escolher segmentos</Link>
+        </div>
+      )}
       {sp.bemvindo && (
         <div className="mb-6">
           <Alert kind="success">
@@ -170,15 +179,22 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
         </div>
 
         <aside className="space-y-6">
-          {maintenanceDue.length > 0 && (
-            <section className="card border-amber-200 p-5">
-              <h2 className="font-medium">Manutenção vencida</h2>
-              <p className="text-xs text-zinc-500">clientes que passaram do ciclo e não têm horário marcado</p>
+          {returns.length > 0 && (
+            <section className="card border-brand-200 p-5">
+              <h2 className="font-medium">Retornos ✨</h2>
+              <p className="text-xs text-zinc-500">clientes chegando ao ciclo habitual e sem horário marcado — 💬 abre o WhatsApp com a mensagem sugerida</p>
               <ul className="mt-3 space-y-2 text-sm">
-                {maintenanceDue.map(({ client, status }) => (
+                {returns.map(({ client, p }) => (
                   <li key={client.id} className="flex items-center justify-between gap-2">
-                    <Link href={`/app/clientes/${client.id}`} className="truncate hover:underline">{client.name}</Link>
-                    <span className="shrink-0 text-xs text-amber-700">há {status.daysOverdue} d</span>
+                    <div className="min-w-0">
+                      <Link href={`/app/clientes/${client.id}`} className="block truncate hover:underline">{client.name}</Link>
+                      <span className={`text-xs ${p.stage === "approaching" ? "text-emerald-700" : p.stage === "inactive" ? "text-zinc-500" : "text-amber-700"}`}>
+                        {RETURN_STAGE_LABELS[p.stage as Exclude<ReturnStage, "unknown">]}
+                        {p.stage === "inactive" ? ` · há ${p.daysSinceLast} d` : p.daysUntilDue == null ? "" : p.daysUntilDue > 0 ? ` · em ${p.daysUntilDue} d` : p.daysUntilDue < 0 ? ` · há ${-p.daysUntilDue} d` : " · hoje"}
+                        {p.source === "learned" && p.intervalDays ? ` · ciclo aprendido ~${p.intervalDays} d` : ""}
+                      </span>
+                    </div>
+                    <a href={whatsappLink(client.phone, returnMessage(client.name, p.stage, convite))} target="_blank" rel="noreferrer" className="btn-ghost shrink-0 px-2 py-1 text-xs" title="Abrir WhatsApp com a mensagem sugerida">💬</a>
                   </li>
                 ))}
               </ul>

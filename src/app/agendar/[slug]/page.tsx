@@ -6,6 +6,8 @@ import { formatPhone, whatsappLink } from "@/lib/phone";
 import { computeDepositCents } from "@/lib/payments/deposit";
 import { policyItems, hasPolicies } from "@/lib/policies";
 import { BookingWizard } from "./booking-wizard";
+import { marcaDoTenant, mesmaMarcaDoHost } from "@/lib/marca-atual";
+import { paleta } from "@/lib/marca";
 import { Gallery } from "./gallery";
 
 async function loadTenant(slug: string) {
@@ -54,7 +56,9 @@ function openingHours(rules: { weekday: number; startMinutes: number; endMinutes
 export default async function PublicBookingPage({ params }: PageProps<"/agendar/[slug]">) {
   const { slug } = await params;
   const tenant = await loadTenant(slug);
-  if (!tenant || tenant.professionals.length === 0) notFound();
+  // Isolamento entre produtos: a página de um estabelecimento só existe no host da marca dele.
+  if (!tenant || tenant.professionals.length === 0 || !(await mesmaMarcaDoHost(tenant))) notFound();
+  const marca = marcaDoTenant(tenant);
 
   const main = tenant.services.filter((s) => !s.isAddOn);
   const addOns = tenant.services.filter((s) => s.isAddOn);
@@ -63,7 +67,7 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
   const single = tenant.professionals.length === 1;
 
   return (
-    <div className="min-h-full bg-[#f7f1ee]">
+    <div className="min-h-full bg-[#f7f1ee]" style={paleta(marca) as React.CSSProperties}>
       <main className="mx-auto min-h-full max-w-lg bg-white shadow-[0_0_60px_-20px_rgba(120,40,70,0.25)]">
         {/* Cabeçalho */}
         <header className="relative overflow-hidden bg-gradient-to-br from-brand-950 via-brand-900 to-brand-700 px-5 pb-10 pt-10 text-white">
@@ -199,7 +203,7 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
         </section>
 
         <footer className="px-5 py-5 text-center text-xs text-zinc-400">
-          Agendamento online por <span className="font-medium text-zinc-500">Heeca Beauty</span>
+          Agendamento online por <span className="font-medium text-zinc-500">{marca.nome}</span>
         </footer>
       </main>
     </div>

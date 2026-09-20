@@ -1,16 +1,19 @@
 import Link from "next/link";
 import { requireAuth } from "@/lib/auth/session";
+import { marcaDoTenant } from "@/lib/marca-atual";
+import { paleta } from "@/lib/marca";
 import { logoutAction } from "@/actions/auth";
 import { DashboardNav } from "@/components/dashboard/nav";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { tenant, user, role, canManage, professional } = await requireAuth();
+  const marca = marcaDoTenant(tenant);
 
   return (
-    <div className="flex flex-1">
+    <div className="flex flex-1" style={paleta(marca) as React.CSSProperties}>
       <aside className="hidden w-60 shrink-0 flex-col border-r border-zinc-200 bg-white px-4 py-5 md:flex">
         <Link href="/app" className="mb-6 px-2 text-xl font-semibold tracking-tight">
-          Heeca<span className="text-brand-500">.</span>
+          {marca.nome}<span className="text-brand-500">.</span>
         </Link>
         <DashboardNav variant="sidebar" role={role} />
         <div className="mt-auto space-y-3 border-t border-zinc-200 pt-4">
@@ -35,7 +38,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3 md:hidden">
           <span className="text-lg font-semibold">
-            Heeca<span className="text-brand-500">.</span>
+            {marca.nome}<span className="text-brand-500">.</span>
           </span>
           <form action={logoutAction}>
             <button className="text-xs text-zinc-500">Sair</button>

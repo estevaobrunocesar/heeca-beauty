@@ -5,17 +5,16 @@ import { updateClientAction } from "@/actions/clients";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Alert } from "@/components/ui/alert";
 import type { ActionResult } from "@/lib/action-result";
+import type { CampoFicha } from "@/lib/marca";
+import { FichaCampos } from "@/components/ficha-campos";
 
 type Values = {
   name: string; phone: string; email: string; notes: string;
-  nailShape: string; nailSize: string; allergies: string; maintenanceIntervalDays: number | null;
+  ficha: Record<string, string>; allergies: string; maintenanceIntervalDays: number | null;
 };
 
-const SHAPES = ["Almond", "Quadrado", "Quadrado arredondado", "Oval", "Stiletto", "Bailarina", "Redondo", "Squoval"];
-const SIZES = ["Curto", "Médio", "Longo", "Extra longo"];
-
-/** Ficha da cliente (seção 11): contato + preferências técnicas que a profissional consulta antes do atendimento. */
-export function ClientForm({ id, initial }: { id: string; initial: Values }) {
+/** Ficha da cliente: contato + ficha técnica dos segmentos ativos (lib/marca.ts) que a profissional consulta antes do atendimento. */
+export function ClientForm({ id, initial, campos, grupos }: { id: string; initial: Values; campos: CampoFicha[]; grupos: Record<string, string> }) {
   const [state, action] = useActionState<ActionResult, FormData>(updateClientAction.bind(null, id), null);
   return (
     <form action={action} className="card space-y-3 p-5">
@@ -27,18 +26,7 @@ export function ClientForm({ id, initial }: { id: string; initial: Values }) {
 
       <fieldset className="space-y-3 rounded-lg border border-brand-100 bg-brand-50/40 p-3">
         <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-700">Ficha técnica</legend>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="label" htmlFor="nailShape">Formato</label>
-            <input id="nailShape" name="nailShape" list="nail-shapes" className="input" defaultValue={initial.nailShape} placeholder="Almond" />
-            <datalist id="nail-shapes">{SHAPES.map((s) => <option key={s} value={s} />)}</datalist>
-          </div>
-          <div>
-            <label className="label" htmlFor="nailSize">Tamanho</label>
-            <input id="nailSize" name="nailSize" list="nail-sizes" className="input" defaultValue={initial.nailSize} placeholder="Médio" />
-            <datalist id="nail-sizes">{SIZES.map((s) => <option key={s} value={s} />)}</datalist>
-          </div>
-        </div>
+        <FichaCampos campos={campos} grupos={grupos} valores={initial.ficha} />
         <div>
           <label className="label" htmlFor="allergies">Alergias / produtos a evitar</label>
           <input id="allergies" name="allergies" className="input" defaultValue={initial.allergies} placeholder="Ex.: sensibilidade ao primer ácido" />
@@ -54,7 +42,7 @@ export function ClientForm({ id, initial }: { id: string; initial: Values }) {
 
       <div>
         <label className="label" htmlFor="notes">Observações internas</label>
-        <textarea id="notes" name="notes" rows={3} className="input" defaultValue={initial.notes} placeholder="Prefere esmaltação nude, gosta de francesinha fina, costuma atrasar 10 min..." />
+        <textarea id="notes" name="notes" rows={3} className="input" defaultValue={initial.notes} placeholder="Preferências, como gosta de ser atendida, costuma atrasar 10 min..." />
       </div>
       <SubmitButton>Salvar</SubmitButton>
     </form>

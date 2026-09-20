@@ -1,44 +1,30 @@
 /**
  * Categorias de serviço (SPEC §7). São criadas pelo salão (tabela `ServiceCategory`, por tenant);
- * aqui ficam só os padrões que o seed/bootstrap instala e os helpers de agrupamento.
+ * aqui ficam as sugestões que o bootstrap instala a partir dos SEGMENTOS do estabelecimento
+ * (lib/marca.ts) e os helpers de agrupamento.
  */
+import { CATEGORIAS_CONHECIDAS, categoriasSugeridas, type CategoriaSugerida, type Segmento } from "@/lib/marca";
 
 export type CategoryRef = { id: string; name: string; slug: string; sortOrder: number };
 
 export type DefaultCategory = { slug: string; name: string; icon: string; examples: string[] };
 
-/** As cinco categorias do spec, na ordem de exibição. Ícone é só decoração do painel. */
-export const DEFAULT_CATEGORIES: DefaultCategory[] = [
-  {
-    slug: "cabelo", name: "Cabelo", icon: "💇",
-    examples: ["Corte", "Escova", "Hidratação", "Reconstrução", "Coloração", "Mechas", "Luzes", "Progressiva", "Botox capilar", "Penteado"],
-  },
-  {
-    slug: "unhas", name: "Unhas", icon: "💅",
-    examples: ["Manicure", "Pedicure", "Esmaltação", "Esmaltação em gel", "Alongamento", "Manutenção", "Nail art", "Blindagem"],
-  },
-  {
-    slug: "sobrancelhas", name: "Sobrancelhas", icon: "🪞",
-    examples: ["Design de sobrancelhas", "Henna", "Micropigmentação"],
-  },
-  {
-    slug: "cilios", name: "Cílios", icon: "👁️",
-    examples: ["Extensão de cílios", "Manutenção de cílios", "Lash lifting"],
-  },
-  {
-    slug: "estetica", name: "Estética", icon: "🌿",
-    examples: ["Limpeza de pele", "Massagem", "Drenagem linfática", "Depilação"],
-  },
-];
+// Categorias criadas antes dos segmentos (bootstrap antigo do Beauty): ícone e exemplos continuam valendo.
+const LEGADO: Record<string, CategoriaSugerida> = {
+  estetica: { slug: "estetica", nome: "Estética", icone: "🌿", exemplos: ["Limpeza de pele", "Peeling", "Drenagem linfática", "Depilação"] },
+};
 
-const ICON_BY_SLUG = new Map(DEFAULT_CATEGORIES.map((c) => [c.slug, c.icon]));
-const EXAMPLES_BY_SLUG = new Map(DEFAULT_CATEGORIES.map((c) => [c.slug, c.examples]));
+const conhecida = (slug: string): CategoriaSugerida | undefined => CATEGORIAS_CONHECIDAS[slug] ?? LEGADO[slug];
 
-/** Ícone para categorias padrão; categorias criadas pelo salão usam um genérico. */
-export const categoryIcon = (slug: string): string => ICON_BY_SLUG.get(slug) ?? "✨";
+/** Categorias padrão para um conjunto de segmentos, na ordem de exibição. */
+export const defaultCategories = (segmentos: Segmento[]): DefaultCategory[] =>
+  categoriasSugeridas(segmentos).map((c) => ({ slug: c.slug, name: c.nome, icon: c.icone, examples: c.exemplos }));
+
+/** Ícone para categorias sugeridas pelos segmentos; categorias criadas pelo salão usam um genérico. */
+export const categoryIcon = (slug: string): string => conhecida(slug)?.icone ?? "✨";
 
 /** Sugestões de nome no cadastro de serviço (vazio para categorias personalizadas). */
-export const categoryExamples = (slug: string | null | undefined): string[] => (slug ? EXAMPLES_BY_SLUG.get(slug) ?? [] : []);
+export const categoryExamples = (slug: string | null | undefined): string[] => (slug ? conhecida(slug)?.exemplos ?? [] : []);
 
 /** Slug de URL a partir do nome ("Cílios & Sobrancelhas" → "cilios-sobrancelhas"). */
 export function categorySlug(name: string): string {

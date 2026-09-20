@@ -6,15 +6,15 @@ import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
 import { normalizePhone } from "@/lib/phone";
 import { fail, success, type ActionResult } from "@/lib/action-result";
+import { perfilDoTenant } from "@/lib/marca-atual";
+import { fichaDoForm } from "@/lib/clients/ficha";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Informe o nome"),
   phone: z.string().trim().min(8, "Informe o WhatsApp"),
   email: z.string().trim().email("E-mail inválido").optional().or(z.literal("")),
   notes: z.string().trim().max(1000).optional().or(z.literal("")),
-  // Ficha técnica (seção 11)
-  nailShape: z.string().trim().max(40).optional().or(z.literal("")),
-  nailSize: z.string().trim().max(40).optional().or(z.literal("")),
+  // Ficha técnica: os campos `ficha.<codigo>` são lidos à parte (fichaDoForm, por segmento)
   allergies: z.string().trim().max(300).optional().or(z.literal("")),
   maintenanceIntervalDays: z.coerce.number().int().min(0).max(365).optional(),
 });
@@ -34,7 +34,7 @@ export async function updateClientAction(id: string, _prev: ActionResult, formDa
     where: { id, tenantId: tenant.id },
     data: {
       name: d.name, phone, email: d.email || null, notes: d.notes || null,
-      nailShape: d.nailShape || null, nailSize: d.nailSize || null, allergies: d.allergies || null,
+      ficha: fichaDoForm(formData, perfilDoTenant(tenant).ficha), allergies: d.allergies || null,
       maintenanceIntervalDays: d.maintenanceIntervalDays || null,
     },
   });

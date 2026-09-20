@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import { db } from "@/lib/db";
 import type { Professional } from "@/generated/prisma/client";
+import { mesmaMarcaDoHost } from "@/lib/marca-atual";
 
 const COOKIE_NAME = "heeca_session";
 const SESSION_DAYS = 30;
@@ -65,7 +66,8 @@ export async function requireAuth() {
     where: { id: session.userId },
     include: { tenant: true, professional: true },
   });
-  if (!user || user.tenantId !== session.tenantId) {
+  // Isolamento entre produtos: um estabelecimento só é servido pelo host da sua marca (lib/marca-atual.ts).
+  if (!user || user.tenantId !== session.tenantId || !(await mesmaMarcaDoHost(user.tenant))) {
     await destroySession();
     redirect("/login");
   }

@@ -11,6 +11,9 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 import { DetailTools } from "./detail-tools";
 import { Avatar } from "@/components/dashboard/avatar";
+import { RegistroForm } from "./registro-form";
+import { perfilDoTenant } from "@/lib/marca-atual";
+import { lerFicha, resumoFicha } from "@/lib/clients/ficha";
 
 export default async function AppointmentDetailPage({ params }: PageProps<"/app/agendamentos/[id]">) {
   const { id } = await params;
@@ -29,7 +32,10 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
     },
   });
   if (!a) notFound();
-  const ficha = [a.client.nailShape && `formato ${a.client.nailShape}`, a.client.nailSize && `tamanho ${a.client.nailSize}`].filter(Boolean).join(" · ");
+  const { segmentos, ficha: campos } = perfilDoTenant(tenant);
+  const grupos = Object.fromEntries(segmentos.map((s) => [s.slug, s.nome]));
+  const fichaAtual = lerFicha(a.client.ficha, campos);
+  const ficha = resumoFicha(campos, fichaAtual);
 
   return (
     <>
@@ -84,6 +90,8 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
             canResend={isActive(a.status)}
           />
 
+          {campos.length > 0 && <RegistroForm id={a.id} campos={campos} grupos={grupos} registro={lerFicha(a.registro, campos)} fichaAtual={fichaAtual} />}
+
           <section className="card p-5">
             <h2 className="font-medium">Histórico</h2>
             <ol className="mt-3 space-y-2 text-sm">
@@ -111,7 +119,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
             <p className="mt-2 text-xs text-zinc-500">{a.client._count.appointments} agendamento(s) no total</p>
             {(ficha || a.client.allergies || a.client.notes) && (
               <div className="mt-3 space-y-1 rounded-lg bg-brand-50/60 px-3 py-2 text-xs text-zinc-700">
-                {ficha && <p>💅 {ficha}</p>}
+                {ficha && <p>✨ {ficha}</p>}
                 {a.client.allergies && <p className="text-rose-700">⚠️ {a.client.allergies}</p>}
                 {a.client.notes && <p className="line-clamp-3 text-zinc-600">{a.client.notes}</p>}
               </div>

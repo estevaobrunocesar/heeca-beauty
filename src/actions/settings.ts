@@ -9,6 +9,8 @@ import { slugify } from "@/lib/slug";
 import { fail, success, type ActionResult } from "@/lib/action-result";
 import type { MessageKind } from "@/generated/prisma/enums";
 import { DEFAULT_TEMPLATES } from "@/lib/whatsapp/templates";
+import { marcaDoTenant } from "@/lib/marca-atual";
+import { garantirCategoriasDosSegmentos } from "@/lib/tenant-bootstrap";
 
 // ───────── Dados do negócio ─────────
 
@@ -178,4 +180,27 @@ export async function updateTemplatesAction(_prev: ActionResult, formData: FormD
   await db.$transaction(ops);
   revalidatePath("/app/configuracoes/whatsapp");
   return success("Mensagens salvas!");
+}
+
+// ───────── Segmentos ─────────
+
+/**
+ * Segmentos que o estabelecimento atende (lib/marca.ts). Ligar um segmento cria as categorias de
+ * serviço sugeridas que ainda não existem; desligar não apaga nada — categorias e serviços são do salão.
+ * Ao menos um segmento precisa ficar ligado.
+ */
+export async function updateSegmentosAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const ctx = await requireAuth();
+  if (!ctx.canManage) return fail("Apenas a responsável pode alterar os segmentos.");
+  const marca = marcaDoTenant(ctx.tenant);
+  const escolhidos = marca.segmentos.map((s) => s.slug).filter((slug) => formData.get(`segmento.${slug}`) === "on");
+  if (escolhidos.length === 0) return fail("Marque ao menos um segmento.");
+  const novas = await db.$transaction(async (tx) => {
+    const tenant = await tx.tenant.update({ where: { id: ctx.tenant.id }, data: { segmentos: escolhidos }, select: { id: true, marca: true, segmentos: true } });
+    return garantirCategoriasDosSegmentos(tx, tenant);
+  });
+  revalidatePath("/app");
+  revalidatePath("/app/configuracoes/segmentos");
+  revalidatePath("/app/servicos");
+  return success(novas > 0 ? `Segmentos salvos! ${novas} categoria(s) de serviço criada(s) — confira em Serviços.` : "Segmentos salvos!");
 }

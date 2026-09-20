@@ -8,6 +8,8 @@ import { AppointmentError, createAppointment, MAX_ITEMS_PER_VISIT, reschedule, t
 import { sendAppointmentMessage } from "@/lib/whatsapp/service";
 import type { AppointmentStatus } from "@/generated/prisma/enums";
 import { fail, success, type ActionResult } from "@/lib/action-result";
+import { perfilDoTenant } from "@/lib/marca-atual";
+import { fichaBruta, fichaDoForm, mesclarFicha } from "@/lib/clients/ficha";
 
 function revalidateAgenda(id?: string) {
   revalidatePath("/app");
@@ -66,6 +68,25 @@ export async function resendConfirmationAction(id: string): Promise<ActionResult
   const r = await sendAppointmentMessage(id, kind);
   revalidateAgenda(id);
   return r?.ok ? success("Mensagem reenviada") : fail(r?.error ?? "Falha ao enviar");
+}
+
+/**
+ * Registro do atendimento (ficha por segmento): grava o que foi feito nesta visita e atualiza a
+ * ficha da cliente com os campos preenchidos — o de hoje vira a preferência atual; vazio não apaga.
+ */
+export async function updateRecordAction(id: string, _prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const ctx = await requireAuth();
+  const appt = await loadAccessible(ctx, id);
+  if (!appt) return fail("Agendamento não encontrado");
+  const registro = fichaDoForm(formData, perfilDoTenant(ctx.tenant).ficha);
+  const client = await db.client.findUniqueOrThrow({ where: { id: appt.clientId }, select: { ficha: true } });
+  await db.$transaction([
+    db.appointment.update({ where: { id }, data: { registro } }),
+    db.client.update({ where: { id: appt.clientId }, data: { ficha: mesclarFicha(fichaBruta(client.ficha), registro) } }),
+  ]);
+  revalidateAgenda(id);
+  revalidatePath(`/app/clientes/${appt.clientId}`);
+  return success("Registro salvo e ficha da cliente atualizada");
 }
 
 const manualItemSchema = z.object({
