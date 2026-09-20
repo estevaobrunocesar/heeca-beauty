@@ -15,7 +15,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <Link href="/app" className="mb-6 px-2 text-xl font-semibold tracking-tight">
           {marca.nome}<span className="text-brand-500">.</span>
         </Link>
-        <DashboardNav variant="sidebar" role={role} />
+        <DashboardNav variant="sidebar" role={role} salas={tenant.salasAtivas} />
         <div className="mt-auto space-y-3 border-t border-zinc-200 pt-4">
           <Link
             href={`/agendar/${tenant.slug}`}
@@ -48,7 +48,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <div className="mx-auto max-w-6xl">{children}</div>
         </main>
       </div>
-      <DashboardNav variant="bottom" role={role} />
+      <DashboardNav variant="bottom" role={role} salas={tenant.salasAtivas} />
     </div>
   );
 }

@@ -12,17 +12,19 @@ import { Avatar } from "@/components/dashboard/avatar";
 import { ScheduleManager } from "./schedule-manager";
 import type { AppointmentStatus } from "@/generated/prisma/enums";
 import { cardInclude, withProfessionals } from "@/lib/appointments/queries";
+import { RoomDayView, type RoomColumn } from "./room-day-view";
 
 export const metadata: Metadata = { title: "Agenda" };
 
-type View = "day" | "week" | "month";
+type View = "day" | "week" | "month" | "rooms";
 
 export default async function AgendaPage({ searchParams }: PageProps<"/app/agenda">) {
   const sp = await searchParams;
   const ctx = await requireAuth();
   const { tenant } = ctx;
   const tz = tenant.timezone;
-  const view: View = sp.view === "week" || sp.view === "month" ? sp.view : "day";
+  // "rooms" = agenda por sala (só com a opção ligada; é uma visão do dia)
+  const view: View = sp.view === "week" || sp.view === "month" ? sp.view : sp.view === "rooms" && tenant.salasAtivas && ctx.seesTeam ? "rooms" : "day";
   const today = todayKey(tz);
   const date = typeof sp.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : today;
 
@@ -48,6 +50,27 @@ export default async function AgendaPage({ searchParams }: PageProps<"/app/agend
   }
   const fromUtc = zonedDateTimeToUtc(fromKey, 0, tz);
   const toUtc = zonedDateTimeToUtc(addDaysToKey(toKey, 1), 0, tz);
+
+  // Agenda por sala: itens do dia de TODOS os profissionais, por sala, mais bloqueios de manutenção.
+  let roomColumns: RoomColumn[] = [];
+  let semSala = 0;
+  if (view === "rooms") {
+    const [rooms, items, roomBlocks] = await Promise.all([
+      db.room.findMany({ where: { tenantId: tenant.id, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, kind: true } }),
+      db.appointmentItem.findMany({
+        where: { tenantId: tenant.id, startsAt: { gte: fromUtc, lt: toUtc }, appointment: { status: { in: ACTIVE_STATUSES } } },
+        select: { id: true, appointmentId: true, roomId: true, startsAt: true, endsAt: true, bufferBeforeMinutes: true, bufferAfterMinutes: true, serviceName: true, professional: { select: { name: true } }, appointment: { select: { status: true, client: { select: { name: true } } } } },
+        orderBy: { startsAt: "asc" },
+      }),
+      db.scheduleBlock.findMany({ where: { tenantId: tenant.id, roomId: { not: null }, startsAt: { lt: toUtc }, endsAt: { gt: fromUtc } }, select: { id: true, roomId: true, startsAt: true, endsAt: true, reason: true } }),
+    ]);
+    semSala = items.filter((it) => !it.roomId).length;
+    roomColumns = rooms.map((r) => ({
+      ...r,
+      blocks: roomBlocks.filter((b) => b.roomId === r.id),
+      items: items.filter((it) => it.roomId === r.id).map((it) => ({ id: it.id, appointmentId: it.appointmentId, startsAt: it.startsAt, endsAt: it.endsAt, bufferBeforeMinutes: it.bufferBeforeMinutes, bufferAfterMinutes: it.bufferAfterMinutes, serviceName: it.serviceName, clientName: it.appointment.client.name, professionalName: it.professional.name, status: it.appointment.status })),
+    }));
+  }
 
   const [appointments, blocks, exceptions] = await Promise.all([
     db.appointment.findMany({
@@ -75,7 +98,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/app/agend
     return list.length === proIds.length && list.every((e) => e.kind === "CLOSED");
   };
 
-  const step = view === "day" ? 1 : view === "week" ? 7 : 0;
+  const step = view === "day" || view === "rooms" ? 1 : view === "week" ? 7 : 0;
   const prev = view === "month" ? format(new Date(dateKeyToDate(date).setMonth(dateKeyToDate(date).getMonth() - 1)), "yyyy-MM-dd") : addDaysToKey(date, -step);
   const next = view === "month" ? format(new Date(dateKeyToDate(date).setMonth(dateKeyToDate(date).getMonth() + 1)), "yyyy-MM-dd") : addDaysToKey(date, step);
   const proQ = selected && ctx.seesTeam ? `&pro=${selected.id}` : "";
@@ -84,7 +107,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/app/agend
   const showProOnCards = !selected && team.length > 1;
 
   const title =
-    view === "day" ? fmtDateKeyLong(date)
+    view === "day" || view === "rooms" ? fmtDateKeyLong(date)
     : view === "week" ? `Semana de ${format(dateKeyToDate(fromKey), "d MMM", { locale: ptBR })} a ${format(dateKeyToDate(toKey), "d MMM", { locale: ptBR })}`
     : ucfirst(format(dateKeyToDate(date), "MMMM 'de' yyyy", { locale: ptBR }));
 
@@ -117,13 +140,15 @@ export default async function AgendaPage({ searchParams }: PageProps<"/app/agend
           <span className="ml-2 text-sm font-medium text-zinc-800">{title}</span>
         </div>
         <div className="flex rounded-lg border border-zinc-200 bg-white p-0.5 text-sm">
-          {(["day", "week", "month"] as View[]).map((v) => (
+          {(tenant.salasAtivas && ctx.seesTeam ? (["day", "rooms", "week", "month"] as View[]) : (["day", "week", "month"] as View[])).map((v) => (
             <Link key={v} href={href(v, date)} className={`rounded-md px-3 py-1 ${view === v ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100"}`}>
-              {v === "day" ? "Dia" : v === "week" ? "Semana" : "Mês"}
+              {v === "day" ? "Dia" : v === "rooms" ? "Salas" : v === "week" ? "Semana" : "Mês"}
             </Link>
           ))}
         </div>
       </div>
+
+      {view === "rooms" && <RoomDayView rooms={roomColumns} tz={tz} semSala={semSala} />}
 
       {view === "day" && (
         <div className="space-y-3">
@@ -138,7 +163,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/app/agend
             .filter((b) => toDateKey(b.startsAt, tz) <= date && toDateKey(b.endsAt, tz) >= date)
             .map((b) => (
               <div key={b.id} className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-                {team.length > 1 && <span className="font-medium">{proName.get(b.professionalId)?.name}: </span>}
+                {team.length > 1 && <span className="font-medium">{proName.get(b.professionalId ?? "")?.name}: </span>}
                 {b.kind === "VACATION" ? "Férias" : "Bloqueio"}{b.reason ? ` · ${b.reason}` : ""}
               </div>
             ))}
@@ -177,7 +202,7 @@ export default async function AgendaPage({ searchParams }: PageProps<"/app/agend
           tz={tz}
           professionals={team.map((p) => ({ id: p.id, name: p.name }))}
           defaultProfessionalId={selected?.id ?? ctx.professional.id}
-          blocks={blocks.map((b) => ({ id: b.id, kind: b.kind, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), reason: b.reason, professionalName: team.length > 1 ? proName.get(b.professionalId)?.name ?? null : null }))}
+          blocks={blocks.map((b) => ({ id: b.id, kind: b.kind, startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), reason: b.reason, professionalName: team.length > 1 ? proName.get(b.professionalId ?? "")?.name ?? null : null }))}
           exceptions={exceptions.map((e) => ({
             id: e.id, date: e.date.toISOString().slice(0, 10), kind: e.kind, reason: e.reason,
             hours: e.kind === "CUSTOM_HOURS" ? `${minutesToHHMM(e.startMinutes ?? 0)}–${minutesToHHMM(e.endMinutes ?? 0)}` : null,

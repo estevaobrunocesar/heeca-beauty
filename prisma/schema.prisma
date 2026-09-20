@@ -16,6 +16,7 @@ model Tenant {
   id           String  @id @default(cuid())
   marca        String   @default("beauty") // produto do motor multi-marca (beauty | wellness) — lib/marca.ts
   segmentos    String[] @default([]) // segmentos que o estabelecimento atende (slugs de marca.segmentos); vazio = ainda não escolheu
+  salasAtivas  Boolean  @default(false) // agenda por sala e recursos (spa, clínica): liga o cadastro de salas e o "onde" no serviço
   slug         String  @unique // app.com.br/agendar/<slug>
   businessName String
   ownerName    String
@@ -86,6 +87,8 @@ model Tenant {
   availability      AvailabilityRule[]
   exceptions        ScheduleException[]
   blocks            ScheduleBlock[]
+  rooms             Room[]
+  resources         Resource[]
   messages          WhatsappMessage[]
   templates         MessageTemplate[]
   appointmentEvents AppointmentEvent[]
@@ -203,6 +206,12 @@ model Service {
   isAddOn         Boolean         @default(false)
   active          Boolean         @default(true)
   imageUrl        String?
+  // Sala e recursos (opção salasAtivas do tenant). roomRequired = precisa de uma sala livre;
+  // `rooms` vazio = qualquer sala ativa serve; com itens = só aquelas. Preparo/limpeza ocupam a sala e os
+  // recursos (não o profissional).
+  roomRequired        Boolean @default(false)
+  bufferBeforeMinutes Int     @default(0)
+  bufferAfterMinutes  Int     @default(0)
   sortOrder       Int             @default(0)
   deletedAt       DateTime? // soft delete: agendamentos antigos continuam referenciando
   createdAt       DateTime        @default(now())
@@ -213,9 +222,90 @@ model Service {
   items         AppointmentItem[]
   addOnUsages   AppointmentAddOn[]
   professionals ProfessionalService[]
+  rooms         ServiceRoom[]
+  resources     ServiceResource[]
 
   @@index([tenantId, active, sortOrder])
   @@index([tenantId, categoryId])
+}
+
+// ───────── Salas e recursos (agenda por sala: spa, clínica de estética) ─────────
+
+model Room {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String // "Sala 01"
+  kind        String? // "Massagem", "Casal", "Estética"…
+  capacity    Int      @default(1)
+  description String?
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  services ServiceRoom[]
+  items    AppointmentItem[]
+  blocks   ScheduleBlock[]
+
+  @@index([tenantId, active, sortOrder])
+}
+
+/** Recurso compartilhado com quantidade (banheira, sauna, macas): consumido pelos serviços enquanto acontecem. */
+model Resource {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  quantity    Int      @default(1)
+  description String?
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  services     ServiceResource[]
+  reservations AppointmentItemResource[]
+  blocks       ScheduleBlock[]
+
+  @@index([tenantId, active, sortOrder])
+}
+
+model ServiceRoom {
+  serviceId String
+  roomId    String
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  room    Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@id([serviceId, roomId])
+  @@index([roomId])
+}
+
+model ServiceResource {
+  serviceId  String
+  resourceId String
+  quantity   Int    @default(1)
+
+  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@id([serviceId, resourceId])
+  @@index([resourceId])
+}
+
+/** Unidades de um recurso reservadas por um item da visita (snapshot do ServiceResource ao agendar). */
+model AppointmentItemResource {
+  id         String @id @default(cuid())
+  itemId     String
+  resourceId String
+  quantity   Int    @default(1)
+
+  item     AppointmentItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  resource Resource        @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, resourceId])
+  @@index([resourceId])
 }
 
 // Adicionais escolhidos junto de um serviço da visita, com snapshot de nome/tempo/preço.
@@ -303,17 +393,23 @@ enum ScheduleBlockKind {
 model ScheduleBlock {
   id             String            @id @default(cuid())
   tenantId       String
-  professionalId String
+  professionalId String? // bloqueio do profissional, ou…
+  roomId         String? // …da sala (manutenção), ou…
+  resourceId     String? // …do recurso
   kind           ScheduleBlockKind @default(BLOCK)
   startsAt       DateTime
   endsAt         DateTime
   reason         String?
   createdAt      DateTime          @default(now())
 
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  professional Professional? @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  room         Room?         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  resource     Resource?     @relation(fields: [resourceId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, startsAt, endsAt])
+  @@index([roomId, startsAt, endsAt])
+  @@index([resourceId, startsAt, endsAt])
 }
 
 // ───────────────────────── Clientes ─────────────────────────
@@ -423,10 +519,15 @@ model AppointmentItem {
   endsAt         DateTime
   sortOrder      Int      @default(0) // ordem em que a cliente faz os serviços
 
+  roomId         String? // sala usada (null = serviço sem sala)
+
   // Snapshot no momento do agendamento (serviço + adicionais)
   serviceName     String
   durationMinutes Int
   priceCents      Int
+  // Preparo/limpeza (Service.bufferBefore/After ao agendar): a sala e os recursos ficam ocupados também nesse tempo.
+  bufferBeforeMinutes Int @default(0)
+  bufferAfterMinutes  Int @default(0)
 
   // Comissão apurada quando a visita é concluída (SPEC §17). null = ainda não apurada / não comissionado.
   commissionCents  Int?
@@ -438,9 +539,12 @@ model AppointmentItem {
   appointment  Appointment        @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   professional Professional       @relation(fields: [professionalId], references: [id])
   service      Service            @relation(fields: [serviceId], references: [id])
+  room         Room?              @relation(fields: [roomId], references: [id], onDelete: SetNull)
   addOns       AppointmentAddOn[]
+  resources    AppointmentItemResource[]
 
   @@index([appointmentId, sortOrder])
+  @@index([roomId, startsAt, endsAt])
   @@index([professionalId, startsAt, endsAt])
   @@index([tenantId, startsAt])
   @@index([professionalId, commissionPaidAt])

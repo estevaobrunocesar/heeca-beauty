@@ -8,7 +8,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { QuickActions } from "./quick-actions";
 import { Avatar } from "./avatar";
 
-type CardItem = { serviceName: string; professional: { name: string; photoUrl: string | null }; addOns?: { name: string }[] };
+type CardItem = { serviceName: string; professional: { name: string; photoUrl: string | null }; room?: { name: string } | null; addOns?: { name: string }[] };
 
 type Props = {
   appointment: Appointment & { client: Client; items: CardItem[] };
@@ -20,6 +20,8 @@ type Props = {
 export function AppointmentCard({ appointment: a, tz, compact, showProfessional }: Props) {
   const cancelled = a.status === "CANCELLED_BY_CLIENT" || a.status === "CANCELLED_BY_PROFESSIONAL";
   const addOns = a.items.flatMap((it) => it.addOns ?? []);
+  // Salas da visita (opção agenda por sala): "Sala 01" ou "Sala 01 → Sala 03"
+  const salas = [...new Set(a.items.map((it) => it.room?.name).filter((n): n is string => !!n))].join(" → ");
   // Profissionais da visita: mostrados quando a agenda é da equipe toda ou quando há mais de um na visita.
   const pros = [...new Map(a.items.map((it) => [it.professional.name, it.professional])).values()];
   const pro = showProfessional || pros.length > 1
@@ -54,6 +56,7 @@ export function AppointmentCard({ appointment: a, tz, compact, showProfessional 
         <p className="text-sm text-zinc-600">
           {a.serviceName}
           {addOns.length > 0 && <span className="ml-1 rounded-full bg-brand-50 px-1.5 py-0.5 text-xs text-brand-800" title={addOns.map((x) => x.name).join(", ")}>+ {addOns.length} adicional{addOns.length > 1 ? "is" : ""}</span>}
+          {salas && <span className="ml-1 rounded-full bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600">🚪 {salas}</span>}
           {" "}· {formatCents(a.priceCents)} ·{" "}
           <a href={`https://wa.me/${a.client.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline">
             {formatPhone(a.client.phone)}

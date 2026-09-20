@@ -6,7 +6,7 @@ export const cardInclude = {
   client: true,
   items: {
     orderBy: { sortOrder: "asc" },
-    include: { professional: { select: { id: true, name: true, photoUrl: true } }, addOns: { select: { name: true } } },
+    include: { professional: { select: { id: true, name: true, photoUrl: true } }, room: { select: { name: true } }, addOns: { select: { name: true } } },
   },
 } satisfies Prisma.AppointmentInclude;
 

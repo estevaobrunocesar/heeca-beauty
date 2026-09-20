@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import type { Tenant } from "@/generated/prisma/client";
 import type { AppointmentActor, AppointmentSource, AppointmentStatus } from "@/generated/prisma/enums";
 import { normalizePhone } from "@/lib/phone";
-import { getVisitSlots } from "@/lib/scheduling/service";
+import { getVisitSlots, occupiedUtc } from "@/lib/scheduling/service";
 import type { VisitItem } from "@/lib/scheduling/availability";
 import { zonedDateTimeToUtc } from "@/lib/dates";
 import { sendAppointmentMessage } from "@/lib/whatsapp/service";
@@ -29,6 +29,8 @@ export type CreateItemInput = {
   professionalId?: string | null;
   /** Adicionais (Service.isAddOn) escolhidos junto com este serviço. */
   addOnIds?: string[] | null;
+  /** Omitido = o sistema escolhe a sala (primeira livre entre as permitidas). Só o painel força uma sala. */
+  roomId?: string | null;
 };
 
 type CreateInput = {
@@ -56,14 +58,20 @@ export async function resolveVisitItems(tenantId: string, inputs: CreateItemInpu
 
   const serviceIds = [...new Set(inputs.map((i) => i.serviceId))];
   const addOnIds = [...new Set(inputs.flatMap((i) => normalizeAddOnIds(i.addOnIds)))];
-  const [services, addOns] = await Promise.all([
+  const [services, addOns, allRooms] = await Promise.all([
     db.service.findMany({
       where: { id: { in: serviceIds }, tenantId, active: true, deletedAt: null, isAddOn: false },
-      include: { professionals: { where: { professional: { active: true } }, include: { professional: { select: { id: true, sortOrder: true } } } } },
+      include: {
+        professionals: { where: { professional: { active: true } }, include: { professional: { select: { id: true, sortOrder: true } } } },
+        rooms: { where: { room: { active: true } }, include: { room: { select: { id: true, sortOrder: true } } } },
+        resources: { where: { resource: { active: true } }, select: { resourceId: true, quantity: true } },
+      },
     }),
     addOnIds.length
       ? db.service.findMany({ where: { id: { in: addOnIds }, tenantId, active: true, deletedAt: null, isAddOn: true } })
       : Promise.resolve([]),
+    // Salas ativas na ordem cadastrada: candidatas de um serviço que exige sala sem restringir quais.
+    db.room.findMany({ where: { tenantId, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true } }),
   ]);
   if (services.length !== serviceIds.length) throw new AppointmentError("Um dos serviços escolhidos não está mais disponível.", "SERVICE_NOT_FOUND");
   if (addOns.length !== addOnIds.length) throw new AppointmentError("Um dos adicionais escolhidos não está mais disponível.", "ADDON_NOT_FOUND");
@@ -82,7 +90,21 @@ export async function resolveVisitItems(tenantId: string, inputs: CreateItemInpu
       if (!eligible.includes(input.professionalId)) throw new AppointmentError(`Este profissional não realiza "${service.name}".`, "PROFESSIONAL_MISMATCH");
       candidates = [input.professionalId];
     }
-    const visitItem: VisitItem = { key: String(index), durationMinutes: totals.durationMinutes, candidates };
+    // Onde: salas específicas do serviço, ou qualquer sala ativa; null = serviço sem sala (opção salasAtivas desligada ou serviço sem exigência).
+    let roomCandidates: string[] | null = null;
+    if (service.roomRequired) {
+      roomCandidates = service.rooms.length ? service.rooms.map((sr) => sr.room).sort((a, b) => a.sortOrder - b.sortOrder).map((r) => r.id) : allRooms.map((r) => r.id);
+      if (input.roomId) {
+        if (!roomCandidates.includes(input.roomId)) throw new AppointmentError(`"${service.name}" não pode ser feito nessa sala.`, "ROOM_MISMATCH");
+        roomCandidates = [input.roomId];
+      }
+      if (roomCandidates.length === 0) throw new AppointmentError(`Nenhuma sala disponível para "${service.name}". Cadastre uma sala em Salas e recursos.`, "NO_ROOM");
+    }
+    const visitItem: VisitItem = {
+      key: String(index), durationMinutes: totals.durationMinutes, candidates, roomCandidates,
+      resources: service.resources.map((r) => ({ resourceId: r.resourceId, quantity: r.quantity })),
+      bufferBeforeMinutes: service.bufferBeforeMinutes, bufferAfterMinutes: service.bufferAfterMinutes,
+    };
     return {
       visitItem,
       service,
@@ -116,6 +138,7 @@ export async function createAppointment(input: CreateInput) {
     return {
       tenantId: tenant.id,
       professionalId: p.professionalId,
+      roomId: p.roomId,
       serviceId: r.service.id,
       startsAt: zonedDateTimeToUtc(dateKey, p.start, tenant.timezone),
       endsAt: zonedDateTimeToUtc(dateKey, p.end, tenant.timezone),
@@ -123,7 +146,10 @@ export async function createAppointment(input: CreateInput) {
       serviceName: r.serviceName,
       durationMinutes: r.durationMinutes,
       priceCents: r.priceCents,
+      bufferBeforeMinutes: r.visitItem.bufferBeforeMinutes ?? 0,
+      bufferAfterMinutes: r.visitItem.bufferAfterMinutes ?? 0,
       addOns: { create: r.addOns.map((a) => ({ serviceId: a.id, name: a.name, durationMinutes: a.durationMinutes, priceCents: a.priceCents })) },
+      resources: { create: (r.visitItem.resources ?? []).map((n) => ({ resourceId: n.resourceId, quantity: n.quantity })) },
     };
   });
 
@@ -175,8 +201,8 @@ export async function createAppointment(input: CreateInput) {
         },
       });
 
-      // Proteção contra corrida: duas clientes reservando o mesmo profissional ao mesmo tempo.
-      // Checa item a item, porque cada um ocupa a agenda de um profissional diferente.
+      // Proteção contra corrida: duas clientes reservando o mesmo profissional (ou a mesma sala) ao mesmo tempo.
+      // Checa item a item, porque cada um ocupa a agenda de um profissional e de uma sala diferentes.
       for (const row of itemRows) {
         const concurrent = await tx.appointmentItem.count({
           where: {
@@ -188,6 +214,17 @@ export async function createAppointment(input: CreateInput) {
         });
         if (concurrent > tenant.maxConcurrentAppointments) {
           throw new AppointmentError("Este horário acabou de ser reservado por outra pessoa.", "SLOT_UNAVAILABLE");
+        }
+        if (row.roomId) {
+          // A sala conta com preparo/limpeza: compara o intervalo ocupado dos dois lados (itens da própria visita podem emendar).
+          const occupied = occupiedUtc(row);
+          const others = await tx.appointmentItem.findMany({
+            where: { roomId: row.roomId, appointmentId: { not: created.id }, appointment: { status: { in: ACTIVE_STATUSES } }, startsAt: { lt: new Date(occupied.endsAt.getTime() + 86_400_000) }, endsAt: { gt: new Date(occupied.startsAt.getTime() - 86_400_000) } },
+            select: { startsAt: true, endsAt: true, bufferBeforeMinutes: true, bufferAfterMinutes: true },
+          });
+          if (others.some((o) => { const oc = occupiedUtc(o); return oc.startsAt < occupied.endsAt && oc.endsAt > occupied.startsAt; })) {
+            throw new AppointmentError("Esta sala acabou de ser reservada por outra pessoa.", "SLOT_UNAVAILABLE");
+          }
         }
       }
       return created;
@@ -276,13 +313,17 @@ export async function reschedule(input: {
   const { tenant, dateKey, minutes, actor } = input;
   const appt = await db.appointment.findFirst({
     where: { id: input.appointmentId, tenantId: tenant.id },
-    include: { items: { orderBy: { sortOrder: "asc" } } },
+    include: { items: { orderBy: { sortOrder: "asc" }, include: { resources: { select: { resourceId: true, quantity: true } } } } },
   });
   if (!appt) throw new AppointmentError("Agendamento não encontrado.", "NOT_FOUND");
   if (!ACTIVE_STATUSES.includes(appt.status)) throw new AppointmentError("Só é possível reagendar agendamentos ativos.");
 
-  // Mesmos profissionais e durações; só a sequência é recolocada no novo início.
-  const visitItems: VisitItem[] = appt.items.map((it) => ({ key: it.id, durationMinutes: it.durationMinutes, candidates: [it.professionalId] }));
+  // Mesmos profissionais, salas, recursos e durações; só a sequência é recolocada no novo início.
+  const visitItems: VisitItem[] = appt.items.map((it) => ({
+    key: it.id, durationMinutes: it.durationMinutes, candidates: [it.professionalId],
+    roomCandidates: it.roomId ? [it.roomId] : null, resources: it.resources,
+    bufferBeforeMinutes: it.bufferBeforeMinutes, bufferAfterMinutes: it.bufferAfterMinutes,
+  }));
   const slots = await getVisitSlots({ tenant, items: visitItems, dateKey, excludeAppointmentId: appt.id });
   const slot = slots.find((s) => s.minutes === minutes);
   if (!slot) throw new AppointmentError("Horário indisponível para reagendamento.", "SLOT_UNAVAILABLE");

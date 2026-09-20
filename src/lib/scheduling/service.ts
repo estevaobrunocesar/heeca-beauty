@@ -3,8 +3,8 @@ import { db } from "@/lib/db";
 import type { Tenant } from "@/generated/prisma/client";
 import { addDaysToKey, dateKeyToDate, weekdayOfKey, zonedDateTimeToUtc, type DateKey } from "@/lib/dates";
 import {
-  buildProfessionalDay, computeAvailableSlots, computeVisitSlots,
-  type DayException, type ProfessionalDay, type Slot, type VisitItem, type VisitSlot, type WeeklyRule,
+  buildProfessionalDay, buildResourceDay, buildRoomDay, computeAvailableSlots, computeVisitSlots,
+  type DayException, type ProfessionalDay, type ResourceDay, type RoomDay, type Slot, type UtcRange, type VisitItem, type VisitSlot, type WeeklyRule,
 } from "./availability";
 
 /** Status que ocupam horário na agenda. */
@@ -175,12 +175,57 @@ async function countDailyLoad(professionalId: string, dateKey: DateKey, tz: stri
   });
 }
 
-// ───────────────────────── Visita com vários serviços (SPEC §11) ─────────────────────────
+// ───────────────────── Visita com vários serviços (SPEC §11), salas e recursos ─────────────────────
+
+/** Intervalo que um item ocupa na sala/recurso: atendimento + preparo/limpeza. */
+export function occupiedUtc(it: { startsAt: Date; endsAt: Date; bufferBeforeMinutes: number; bufferAfterMinutes: number }): UtcRange {
+  return { startsAt: new Date(it.startsAt.getTime() - it.bufferBeforeMinutes * 60_000), endsAt: new Date(it.endsAt.getTime() + it.bufferAfterMinutes * 60_000) };
+}
+
+/** Bloqueios e ocupação das salas citadas nos itens, em [fromKey, toKey]. Sala inativa/inexistente fica fora do mapa (= indisponível). */
+async function loadRoomsContext(roomIds: string[], tz: string, fromKey: DateKey, toKey: DateKey, excludeAppointmentId?: string) {
+  const ctx = new Map<string, { blocks: UtcRange[]; items: UtcRange[] }>();
+  if (roomIds.length === 0) return ctx;
+  const rangeStart = zonedDateTimeToUtc(fromKey, 0, tz);
+  const rangeEnd = zonedDateTimeToUtc(addDaysToKey(toKey, 1), 0, tz);
+  const [rooms, blocks, items] = await Promise.all([
+    db.room.findMany({ where: { id: { in: roomIds }, active: true }, select: { id: true } }),
+    db.scheduleBlock.findMany({ where: { roomId: { in: roomIds }, startsAt: { lt: rangeEnd }, endsAt: { gt: rangeStart } }, select: { roomId: true, startsAt: true, endsAt: true } }),
+    db.appointmentItem.findMany({
+      where: { roomId: { in: roomIds }, appointment: { status: { in: [...ACTIVE_STATUSES] } }, startsAt: { lt: rangeEnd }, endsAt: { gt: rangeStart }, ...(excludeAppointmentId ? { appointmentId: { not: excludeAppointmentId } } : {}) },
+      select: { roomId: true, startsAt: true, endsAt: true, bufferBeforeMinutes: true, bufferAfterMinutes: true },
+    }),
+  ]);
+  for (const r of rooms) ctx.set(r.id, { blocks: [], items: [] });
+  for (const b of blocks) ctx.get(b.roomId!)?.blocks.push(b);
+  for (const it of items) ctx.get(it.roomId!)?.items.push(occupiedUtc(it));
+  return ctx;
+}
+
+/** Quantidade, bloqueios e reservas dos recursos citados nos itens, em [fromKey, toKey]. */
+async function loadResourcesContext(resourceIds: string[], tz: string, fromKey: DateKey, toKey: DateKey, excludeAppointmentId?: string) {
+  const ctx = new Map<string, { quantity: number; blocks: UtcRange[]; reservations: (UtcRange & { quantity: number })[] }>();
+  if (resourceIds.length === 0) return ctx;
+  const rangeStart = zonedDateTimeToUtc(fromKey, 0, tz);
+  const rangeEnd = zonedDateTimeToUtc(addDaysToKey(toKey, 1), 0, tz);
+  const [resources, blocks, reservations] = await Promise.all([
+    db.resource.findMany({ where: { id: { in: resourceIds }, active: true }, select: { id: true, quantity: true } }),
+    db.scheduleBlock.findMany({ where: { resourceId: { in: resourceIds }, startsAt: { lt: rangeEnd }, endsAt: { gt: rangeStart } }, select: { resourceId: true, startsAt: true, endsAt: true } }),
+    db.appointmentItemResource.findMany({
+      where: { resourceId: { in: resourceIds }, item: { appointment: { status: { in: [...ACTIVE_STATUSES] } }, startsAt: { lt: rangeEnd }, endsAt: { gt: rangeStart }, ...(excludeAppointmentId ? { appointmentId: { not: excludeAppointmentId } } : {}) } },
+      select: { resourceId: true, quantity: true, item: { select: { startsAt: true, endsAt: true, bufferBeforeMinutes: true, bufferAfterMinutes: true } } },
+    }),
+  ]);
+  for (const r of resources) ctx.set(r.id, { quantity: r.quantity, blocks: [], reservations: [] });
+  for (const b of blocks) ctx.get(b.resourceId!)?.blocks.push(b);
+  for (const r of reservations) ctx.get(r.resourceId)?.reservations.push({ ...occupiedUtc(r.item), quantity: r.quantity });
+  return ctx;
+}
 
 /**
- * Carrega o dia de cada profissional citado nos itens, de uma vez, e monta o `ProfessionalDay`
- * de cada um para o intervalo [fromKey, toKey]. Devolve um construtor por data, para reuso
- * no calendário (vários dias) sem repetir as consultas.
+ * Carrega o dia de cada profissional, sala e recurso citado nos itens, de uma vez, para o intervalo
+ * [fromKey, toKey]. Devolve um construtor por data, para reuso no calendário (vários dias) sem repetir
+ * as consultas.
  */
 async function loadVisitContext(opts: {
   tenant: TenantRules;
@@ -191,10 +236,15 @@ async function loadVisitContext(opts: {
   excludeAppointmentId?: string;
 }) {
   const { tenant, items, fromKey, toKey, now } = opts;
+  const tz = tenant.timezone;
   const professionalIds = [...new Set(items.flatMap((i) => i.candidates))];
-  const contexts = await Promise.all(
-    professionalIds.map(async (pid) => [pid, await loadContext(pid, tenant.timezone, fromKey, toKey, opts.excludeAppointmentId)] as const),
-  );
+  const roomIds = [...new Set(items.flatMap((i) => i.roomCandidates ?? []))];
+  const resourceIds = [...new Set(items.flatMap((i) => (i.resources ?? []).map((r) => r.resourceId)))];
+  const [contexts, roomsCtx, resourcesCtx] = await Promise.all([
+    Promise.all(professionalIds.map(async (pid) => [pid, await loadContext(pid, tz, fromKey, toKey, opts.excludeAppointmentId)] as const)),
+    loadRoomsContext(roomIds, tz, fromKey, toKey, opts.excludeAppointmentId),
+    loadResourcesContext(resourceIds, tz, fromKey, toKey, opts.excludeAppointmentId),
+  ]);
   return (dateKey: DateKey) => {
     const days = new Map<string, ProfessionalDay | null>();
     for (const [pid, ctx] of contexts) {
@@ -210,7 +260,11 @@ async function loadVisitContext(opts: {
         maxDailyAppointments: tenant.maxDailyAppointments,
       }));
     }
-    return days;
+    const rooms = new Map<string, RoomDay>();
+    for (const [id, c] of roomsCtx) rooms.set(id, buildRoomDay({ dateKey, tz, blocks: c.blocks, items: c.items }));
+    const resources = new Map<string, ResourceDay>();
+    for (const [id, c] of resourcesCtx) resources.set(id, buildResourceDay({ dateKey, tz, quantity: c.quantity, blocks: c.blocks, reservations: c.reservations }));
+    return { days, rooms, resources };
   };
 }
 
@@ -228,7 +282,7 @@ async function balanceCandidates(items: VisitItem[], dateKey: DateKey, tz: strin
   );
 }
 
-/** Horários em que a visita inteira (todos os itens, em sequência) cabe no dia. */
+/** Horários em que a visita inteira (todos os itens, em sequência, com sala e recursos) cabe no dia. */
 export async function getVisitSlots(opts: {
   tenant: TenantRules;
   items: VisitItem[];
@@ -241,7 +295,7 @@ export async function getVisitSlots(opts: {
   const items = await balanceCandidates(opts.items, dateKey, tenant.timezone);
   const daysFor = await loadVisitContext({ tenant, items, fromKey: dateKey, toKey: dateKey, now, excludeAppointmentId: opts.excludeAppointmentId });
   return computeVisitSlots({
-    dateKey, tz: tenant.timezone, now, items, days: daysFor(dateKey),
+    dateKey, tz: tenant.timezone, now, items, ...daysFor(dateKey),
     slotIntervalMinutes: tenant.slotIntervalMinutes,
     minAdvanceMinutes: tenant.minAdvanceMinutes,
   });
@@ -260,7 +314,7 @@ export async function getDaysWithVisitAvailability(opts: {
   const result = new Set<DateKey>();
   for (let key = fromKey; key <= toKey; key = addDaysToKey(key, 1)) {
     const slots = computeVisitSlots({
-      dateKey: key, tz: tenant.timezone, now, items, days: daysFor(key),
+      dateKey: key, tz: tenant.timezone, now, items, ...daysFor(key),
       slotIntervalMinutes: tenant.slotIntervalMinutes,
       minAdvanceMinutes: tenant.minAdvanceMinutes,
     });

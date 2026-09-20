@@ -137,17 +137,93 @@ export function computeAvailableSlots(input: AvailabilityInput): Slot[] {
   return slots;
 }
 
-// ───────────────────────── Visita com vários serviços (SPEC §11) ─────────────────────────
+// ───────────────────── Visita com vários serviços (SPEC §11), salas e recursos ─────────────────────
 
-/** Um serviço da visita, ainda sem horário: quem pode fazer e quanto tempo leva. */
+/** Recurso pedido por um item: qual e quantas unidades. */
+export type ResourceNeed = { resourceId: string; quantity: number };
+
+/** Um serviço da visita, ainda sem horário: quem pode fazer, onde, com o quê e quanto tempo leva. */
 export type VisitItem = {
   key: string; // identifica o item no resultado (ex.: serviceId ou índice)
   durationMinutes: number; // serviço + adicionais
   candidates: string[]; // profissionais habilitados, em ordem de preferência ("qualquer" = todos os habilitados)
+  /**
+   * Salas em que o serviço pode acontecer, em ordem de preferência (opção "agenda por sala" do tenant).
+   * `undefined`/`null` = o serviço não usa sala; `[]` = precisa de sala mas nenhuma serve (nunca cabe).
+   */
+  roomCandidates?: string[] | null;
+  /** Recursos compartilhados que o serviço consome enquanto acontece (banheira, sauna, maca…). */
+  resources?: ResourceNeed[];
+  /** Preparo/limpeza: a sala e os recursos ficam ocupados também nesse tempo; o profissional não. */
+  bufferBeforeMinutes?: number;
+  bufferAfterMinutes?: number;
 };
 
-/** Onde cada item ficou: profissional escolhido e intervalo em minutos do dia. */
-export type ItemPlacement = { key: string; professionalId: string; start: number; end: number };
+/** Onde cada item ficou: profissional, sala (ou null) e intervalo do atendimento em minutos do dia. */
+export type ItemPlacement = { key: string; professionalId: string; roomId: string | null; start: number; end: number };
+
+/** O dia de UMA sala: bloqueios (manutenção) e ocupação (itens já com preparo/limpeza aplicados). */
+export type RoomDay = { blocked: MinuteRange[]; busy: MinuteRange[] };
+
+/** O dia de UM recurso: quantas unidades existem e o que já está reservado (com quantidade). */
+export type ResourceDay = { quantity: number; blocked: MinuteRange[]; reservations: { range: MinuteRange; quantity: number }[] };
+
+const clampAll = (ranges: UtcRange[], dateKey: DateKey, tz: string) => ranges.map((r) => clampToDay(r, dateKey, tz)).filter((r): r is MinuteRange => !!r);
+
+export function buildRoomDay(input: { dateKey: DateKey; tz: string; blocks: UtcRange[]; items: UtcRange[] }): RoomDay {
+  return { blocked: clampAll(input.blocks, input.dateKey, input.tz), busy: clampAll(input.items, input.dateKey, input.tz) };
+}
+
+export function buildResourceDay(input: { dateKey: DateKey; tz: string; quantity: number; blocks: UtcRange[]; reservations: (UtcRange & { quantity: number })[] }): ResourceDay {
+  const reservations: ResourceDay["reservations"] = [];
+  for (const r of input.reservations) {
+    const range = clampToDay(r, input.dateKey, input.tz);
+    if (range) reservations.push({ range, quantity: r.quantity });
+  }
+  return { quantity: input.quantity, blocked: clampAll(input.blocks, input.dateKey, input.tz), reservations };
+}
+
+/** A sala está livre (sem bloqueio e sem outro item) durante todo o intervalo? Sala desconhecida/inativa = ocupada. */
+export function isRoomFree(day: RoomDay | undefined, range: MinuteRange): boolean {
+  if (!day) return false;
+  return !day.blocked.some((b) => overlaps(range, b)) && !day.busy.some((b) => overlaps(range, b));
+}
+
+/**
+ * Quantas unidades do recurso sobram no pior momento do intervalo (bloqueio = nenhuma).
+ * O pico de uso só muda no início de alguma reserva, então basta avaliar nesses instantes.
+ */
+export function resourceUnitsFree(day: ResourceDay | undefined, range: MinuteRange): number {
+  if (!day) return 0;
+  if (day.blocked.some((b) => overlaps(range, b))) return 0;
+  const instantes = new Set<number>([range.start]);
+  for (const r of day.reservations) if (overlaps(range, r.range)) instantes.add(Math.max(r.range.start, range.start));
+  let pico = 0;
+  for (const t of instantes) pico = Math.max(pico, day.reservations.filter((r) => r.range.start <= t && r.range.end > t).reduce((n, r) => n + r.quantity, 0));
+  return Math.max(0, day.quantity - pico);
+}
+
+/** Como o motor consulta o mundo ao encaixar uma visita. Tudo já reduzido a minutos do dia. */
+export type PlacementContext = {
+  isProfessionalFree: (professionalId: string, range: MinuteRange) => boolean;
+  isRoomFree: (roomId: string, range: MinuteRange) => boolean;
+  resourceUnitsFree: (resourceId: string, range: MinuteRange) => number;
+};
+
+/**
+ * REGRA DE ESCOLHA DA SALA (decisão de negócio, isolada de propósito): a primeira livre na ordem
+ * cadastrada pelo estabelecimento (sortOrder). Previsível — "Sala 01" enche antes da "Sala 02" e a
+ * recepção sabe onde olhar. Alternativas futuras por tenant: a menos usada no dia, a menor que sirva
+ * (preserva a sala de casal), a que o cliente usou da última vez.
+ */
+export function pickRoom(candidates: string[], range: MinuteRange, ctx: PlacementContext): string | null {
+  return candidates.find((roomId) => ctx.isRoomFree(roomId, range)) ?? null;
+}
+
+/** Intervalo que a sala e os recursos ocupam: o atendimento mais o preparo/limpeza. */
+export function occupiedRange(core: MinuteRange, item: Pick<VisitItem, "bufferBeforeMinutes" | "bufferAfterMinutes">): MinuteRange {
+  return { start: core.start - (item.bufferBeforeMinutes ?? 0), end: core.end + (item.bufferAfterMinutes ?? 0) };
+}
 
 export type VisitSlot = { minutes: number; startsAt: Date; endsAt: Date; placements: ItemPlacement[] };
 
@@ -155,32 +231,32 @@ export type VisitSlot = { minutes: number; startsAt: Date; endsAt: Date; placeme
  * Tenta encaixar todos os itens de uma visita a partir de `startMinutes`.
  * Devolve a alocação de cada item, ou `null` se a visita não cabe nesse início.
  *
- * `isFree(professionalId, range)` responde se aquele profissional está livre no intervalo
- * (já considera janela, bloqueios, buffer e concorrência — ver `isRangeFree`).
+ * Um item só cabe quando, ao mesmo tempo:
+ *  - um profissional candidato está livre no intervalo do atendimento (`isRangeFree`: janela, bloqueios, buffer, concorrência);
+ *  - uma sala candidata está livre no intervalo com preparo/limpeza (se o serviço usa sala);
+ *  - cada recurso pedido tem unidades suficientes nesse mesmo intervalo.
  *
- * Esta função decide a REGRA DE SEQUENCIAMENTO da visita, que o spec deixa em aberto:
- *  - estritamente em sequência (item 2 começa quando o item 1 termina; total = soma das durações,
- *    como no exemplo "2h15" do SPEC §11);
- *  - ou permitindo sobreposição quando os profissionais são diferentes (manicure durante a escova),
- *    o que encurta a visita mas pressupõe que o salão trabalha assim.
- * Também decide como escolher entre os `candidates` de cada item (primeiro livre? menor carga?).
+ * Regra de sequenciamento: estritamente em sequência — item N começa quando N−1 termina; total = soma
+ * das durações (o "2h15" do SPEC §11). Entre candidatos, o primeiro livre; balanceamento de carga é feito
+ * pela camada de serviço reordenando `candidates`. Como os itens da mesma visita nunca se sobrepõem, a
+ * mesma sala/recurso pode se repetir de um item para o outro sem conflito.
  */
-export function placeVisit(
-  startMinutes: number,
-  items: VisitItem[],
-  isFree: (professionalId: string, range: MinuteRange) => boolean,
-): ItemPlacement[] | null {
-  // Regra do MVP: estritamente em sequência (a cliente faz um serviço de cada vez, na ordem
-  // escolhida) e, entre os candidatos, o primeiro que estiver livre. Balanceamento de carga,
-  // quando desejado, é feito pela camada de serviço ordenando `candidates` antes.
+export function placeVisit(startMinutes: number, items: VisitItem[], ctx: PlacementContext): ItemPlacement[] | null {
   const placements: ItemPlacement[] = [];
   let cursor = startMinutes;
   for (const item of items) {
-    const range: MinuteRange = { start: cursor, end: cursor + item.durationMinutes };
-    const professionalId = item.candidates.find((pid) => isFree(pid, range));
+    const core: MinuteRange = { start: cursor, end: cursor + item.durationMinutes };
+    const professionalId = item.candidates.find((pid) => ctx.isProfessionalFree(pid, core));
     if (!professionalId) return null;
-    placements.push({ key: item.key, professionalId, ...range });
-    cursor = range.end;
+    const occupied = occupiedRange(core, item);
+    let roomId: string | null = null;
+    if (item.roomCandidates != null) {
+      roomId = pickRoom(item.roomCandidates, occupied, ctx);
+      if (!roomId) return null;
+    }
+    for (const need of item.resources ?? []) if (ctx.resourceUnitsFree(need.resourceId, occupied) < need.quantity) return null;
+    placements.push({ key: item.key, professionalId, roomId, ...core });
+    cursor = core.end;
   }
   return placements;
 }
@@ -191,22 +267,29 @@ export type VisitAvailabilityInput = {
   now: Date;
   items: VisitItem[];
   days: Map<string, ProfessionalDay | null>; // por professionalId (null = dia fechado)
+  rooms?: Map<string, RoomDay>; // por roomId (ausente = sala indisponível)
+  resources?: Map<string, ResourceDay>; // por resourceId
   slotIntervalMinutes: number;
   minAdvanceMinutes: number;
 };
 
+/** Monta o `PlacementContext` a partir dos mapas por dia. */
+export function contextFromDays(input: Pick<VisitAvailabilityInput, "days" | "rooms" | "resources">): PlacementContext {
+  return {
+    isProfessionalFree: (pid, range) => { const day = input.days.get(pid); return !!day && isRangeFree(day, range); },
+    isRoomFree: (roomId, range) => isRoomFree(input.rooms?.get(roomId), range),
+    resourceUnitsFree: (resourceId, range) => resourceUnitsFree(input.resources?.get(resourceId), range),
+  };
+}
+
 /**
- * Horários de início em que a visita inteira cabe. Percorre os inícios possíveis
+ * Horários de início em que a visita inteira cabe (profissionais, salas e recursos). Percorre os inícios possíveis
  * (união das janelas de todos os profissionais candidatos) e delega a `placeVisit`.
  */
 export function computeVisitSlots(input: VisitAvailabilityInput): VisitSlot[] {
   const { dateKey, tz, now, items, days } = input;
   if (items.length === 0) return [];
-
-  const isFree = (professionalId: string, range: MinuteRange) => {
-    const day = days.get(professionalId);
-    return !!day && isRangeFree(day, range);
-  };
+  const ctx = contextFromDays(input);
 
   // Inícios candidatos: começo de cada janela de cada profissional do primeiro item, avançando de `step`.
   const step = Math.max(5, input.slotIntervalMinutes);
@@ -220,7 +303,7 @@ export function computeVisitSlots(input: VisitAvailabilityInput): VisitSlot[] {
   for (const m of [...starts].sort((a, b) => a - b)) {
     const startsAt = zonedDateTimeToUtc(dateKey, m, tz);
     if (startsAt < earliestStart) continue;
-    const placements = placeVisit(m, items, isFree);
+    const placements = placeVisit(m, items, ctx);
     if (!placements) continue;
     const end = Math.max(...placements.map((p) => p.end));
     slots.push({ minutes: m, startsAt, endsAt: zonedDateTimeToUtc(dateKey, end, tz), placements });

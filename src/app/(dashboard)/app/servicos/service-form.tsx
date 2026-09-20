@@ -19,7 +19,15 @@ export type ServiceFormValues = {
   imageUrl?: string | null;
   isAddOn?: boolean;
   active?: boolean;
+  roomRequired?: boolean;
+  bufferBeforeMinutes?: number;
+  bufferAfterMinutes?: number;
+  roomIds?: string[];
+  resources?: { resourceId: string; quantity: number }[];
 };
+
+/** Salas e recursos do estabelecimento (só quando a opção "agenda por sala" está ligada). */
+export type RoomOptions = { rooms: { id: string; name: string }[]; resources: { id: string; name: string; quantity: number }[] } | null;
 
 // Durações típicas: corte 45, escova 40, manicure 45, coloração 2h, alongamento 2h30.
 const DURATIONS = [10, 15, 20, 30, 40, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, 210, 240];
@@ -30,13 +38,15 @@ function fmtDuration(min: number) {
   return h === 0 ? `${m} min` : m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, "0")}`;
 }
 
-export function ServiceForm({ initial, defaultAddOn, categories }: { initial?: ServiceFormValues; defaultAddOn?: boolean; categories: CategoryRef[] }) {
+export function ServiceForm({ initial, defaultAddOn, categories, roomOptions = null }: { initial?: ServiceFormValues; defaultAddOn?: boolean; categories: CategoryRef[]; roomOptions?: RoomOptions }) {
   const router = useRouter();
   const action = initial?.id ? updateServiceAction.bind(null, initial.id) : createServiceAction;
   const [state, formAction] = useActionState<ActionResult, FormData>(action, null);
   const [isAddOn, setIsAddOn] = useState(initial?.isAddOn ?? defaultAddOn ?? false);
   // Adicional nasce sem categoria (é listado à parte); procedimento começa na primeira categoria do salão.
   const [categoryId, setCategoryId] = useState<string>(initial?.categoryId ?? (isAddOn ? "" : categories[0]?.id ?? ""));
+  const [roomRequired, setRoomRequired] = useState(initial?.roomRequired ?? false);
+  const [resourceIds, setResourceIds] = useState<Set<string>>(new Set((initial?.resources ?? []).map((r) => r.resourceId)));
 
   useEffect(() => {
     if (state?.ok) router.push("/app/servicos");
@@ -117,6 +127,58 @@ export function ServiceForm({ initial, defaultAddOn, categories }: { initial?: S
         <textarea id="clientNotes" name="clientNotes" rows={2} className="input" defaultValue={initial?.clientNotes ?? ""} placeholder="Ex.: venha sem esmalte; se tiver alongamento de outro studio, avise para incluirmos a remoção." />
         <p className="mt-1 text-xs text-zinc-500">Mostrado na página pública quando a cliente escolhe este {isAddOn ? "adicional" : "procedimento"}.</p>
       </div>
+
+      {roomOptions && !isAddOn && (
+        <fieldset className="space-y-3 rounded-xl border border-zinc-200 p-4">
+          <legend className="px-1 text-sm font-medium">Sala e recursos</legend>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="roomRequired" checked={roomRequired} onChange={(e) => setRoomRequired(e.target.checked)} className="h-4 w-4 rounded border-zinc-300" />
+            Precisa de uma sala livre
+          </label>
+          {roomRequired && (
+            <div className="space-y-2 pl-6">
+              <p className="text-xs text-zinc-500">Em quais salas pode acontecer? Nenhuma marcada = qualquer sala ativa, na ordem cadastrada.</p>
+              <div className="flex flex-wrap gap-2">
+                {roomOptions.rooms.map((r) => (
+                  <label key={r.id} className="flex items-center gap-1.5 rounded-full border border-zinc-200 px-3 py-1 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+                    <input type="checkbox" name="roomIds" value={r.id} defaultChecked={initial?.roomIds?.includes(r.id)} className="h-3.5 w-3.5" />{r.name}
+                  </label>
+                ))}
+                {roomOptions.rooms.length === 0 && <span className="text-xs text-rose-600">Nenhuma sala cadastrada — cadastre em Salas e recursos.</span>}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label" htmlFor="bufferBeforeMinutes">Preparo antes (min)</label>
+                  <input id="bufferBeforeMinutes" name="bufferBeforeMinutes" type="number" min={0} max={120} step={5} className="input" defaultValue={initial?.bufferBeforeMinutes ?? 0} />
+                </div>
+                <div>
+                  <label className="label" htmlFor="bufferAfterMinutes">Limpeza depois (min)</label>
+                  <input id="bufferAfterMinutes" name="bufferAfterMinutes" type="number" min={0} max={120} step={5} className="input" defaultValue={initial?.bufferAfterMinutes ?? 0} />
+                </div>
+              </div>
+              <p className="text-xs text-zinc-500">Preparo e limpeza ocupam a sala e os recursos, não o profissional.</p>
+            </div>
+          )}
+          {roomOptions.resources.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs text-zinc-500">Recursos que este serviço consome enquanto acontece:</p>
+              <div className="flex flex-wrap gap-2">
+                {roomOptions.resources.map((r) => {
+                  const on = resourceIds.has(r.id);
+                  const qtd = initial?.resources?.find((x) => x.resourceId === r.id)?.quantity ?? 1;
+                  return (
+                    <label key={r.id} className="flex items-center gap-1.5 rounded-full border border-zinc-200 px-3 py-1 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+                      <input type="checkbox" name="resourceIds" value={r.id} checked={on} onChange={(e) => setResourceIds((s) => { const n = new Set(s); if (e.target.checked) n.add(r.id); else n.delete(r.id); return n; })} className="h-3.5 w-3.5" />
+                      {r.name}
+                      {on && r.quantity > 1 && <input name={`resourceQty.${r.id}`} type="number" min={1} max={r.quantity} defaultValue={qtd} className="ml-1 w-12 rounded border border-zinc-200 px-1 text-xs" title="Unidades" />}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </fieldset>
+      )}
 
       <div>
         <label className="label" htmlFor="imageUrl">URL da imagem (opcional)</label>

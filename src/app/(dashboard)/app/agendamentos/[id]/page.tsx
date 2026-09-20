@@ -24,7 +24,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
   const a = await db.appointment.findFirst({
     where: { id, tenantId: tenant.id, items: { some: { professionalId: { in: ctx.professionals.map((p) => p.id) } } } },
     include: {
-      items: { orderBy: { sortOrder: "asc" }, include: { professional: { select: { id: true, name: true, photoUrl: true } }, addOns: true } },
+      items: { orderBy: { sortOrder: "asc" }, include: { professional: { select: { id: true, name: true, photoUrl: true } }, room: { select: { name: true } }, addOns: true } },
       events: { orderBy: { createdAt: "asc" } },
       messages: { orderBy: { createdAt: "desc" } },
       payment: true,
@@ -60,6 +60,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
                         <span key={x.id} className="rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-800">+ {x.name} <span className="text-brand-500">({formatCents(x.priceCents)}{x.durationMinutes ? ` · ${x.durationMinutes} min` : ""})</span></span>
                       ))}
                       <span className="text-zinc-500">· {formatCents(it.priceCents)}</span>
+                      {it.room && <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">🚪 {it.room.name}</span>}
                       {(ctx.professionals.length > 1 || a.items.length > 1) && (
                         <span className="flex items-center gap-1 text-zinc-600"><Avatar name={it.professional.name} photoUrl={it.professional.photoUrl} size="sm" /> {it.professional.name}</span>
                       )}

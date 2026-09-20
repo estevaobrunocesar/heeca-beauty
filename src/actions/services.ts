@@ -18,6 +18,12 @@ const serviceSchema = z.object({
   price: z.string().trim().min(1, "Informe o preço"),
   imageUrl: z.string().trim().url("URL da imagem inválida").optional().or(z.literal("")),
   active: z.coerce.boolean().optional(),
+  // Sala e recursos (só com Tenant.salasAtivas): roomIds vazio = qualquer sala ativa; resources "id:qtd" por linha
+  roomRequired: z.coerce.boolean().optional(),
+  roomIds: z.array(z.string().min(1)).optional(),
+  resources: z.array(z.object({ resourceId: z.string().min(1), quantity: z.coerce.number().int().min(1).max(99) })).optional(),
+  bufferBeforeMinutes: z.coerce.number().int().min(0).max(120).optional(),
+  bufferAfterMinutes: z.coerce.number().int().min(0).max(120).optional(),
 });
 
 function parse(formData: FormData) {
@@ -25,16 +31,32 @@ function parse(formData: FormData) {
     ...Object.fromEntries(formData),
     active: formData.get("active") === "on",
     isAddOn: formData.get("isAddOn") === "on",
+    roomRequired: formData.get("roomRequired") === "on",
+    roomIds: formData.getAll("roomIds").map(String),
+    resources: formData.getAll("resourceIds").map(String).map((resourceId) => ({ resourceId, quantity: formData.get(`resourceQty.${resourceId}`) ?? 1 })),
   });
   if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0].message };
   const priceCents = parseMoneyToCents(parsed.data.price);
   if (priceCents == null) return { ok: false as const, error: "Preço inválido" };
-  const { price: _price, ...rest } = parsed.data;
+  const { price: _price, roomIds, resources, ...rest } = parsed.data;
   void _price;
   return {
     ok: true as const,
-    data: { ...rest, categoryId: rest.categoryId || null, priceCents, isAddOn: rest.isAddOn ?? false, description: rest.description || null, clientNotes: rest.clientNotes || null, imageUrl: rest.imageUrl || null },
+    // Adicional nunca usa sala própria (acontece dentro do procedimento principal).
+    data: { ...rest, categoryId: rest.categoryId || null, priceCents, isAddOn: rest.isAddOn ?? false, description: rest.description || null, clientNotes: rest.clientNotes || null, imageUrl: rest.imageUrl || null, roomRequired: !rest.isAddOn && (rest.roomRequired ?? false), bufferBeforeMinutes: rest.bufferBeforeMinutes ?? 0, bufferAfterMinutes: rest.bufferAfterMinutes ?? 0 },
+    roomIds: roomIds ?? [],
+    resources: resources ?? [],
   };
+}
+
+/** Salas/recursos do serviço: só os do próprio tenant (id forjado de outro salão é ignorado). */
+async function ownedLinks(tenantId: string, roomIds: string[], resources: { resourceId: string; quantity: number }[]) {
+  const [rooms, res] = await Promise.all([
+    roomIds.length ? db.room.findMany({ where: { id: { in: roomIds }, tenantId }, select: { id: true } }) : [],
+    resources.length ? db.resource.findMany({ where: { id: { in: resources.map((r) => r.resourceId) }, tenantId }, select: { id: true } }) : [],
+  ]);
+  const okRes = new Set(res.map((r) => r.id));
+  return { rooms: rooms.map((r) => ({ roomId: r.id })), resources: resources.filter((r) => okRes.has(r.resourceId)).map((r) => ({ resourceId: r.resourceId, quantity: r.quantity })) };
 }
 
 export async function createServiceAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
@@ -48,11 +70,14 @@ export async function createServiceAction(_prev: ActionResult, formData: FormDat
     db.service.findFirst({ where: { tenantId: tenant.id }, orderBy: { sortOrder: "desc" } }),
     db.professional.findMany({ where: { tenantId: tenant.id }, select: { id: true } }),
   ]);
+  const links = await ownedLinks(tenant.id, r.roomIds, r.resources);
   await db.service.create({
     data: {
       ...r.data, active: r.data.active ?? true, tenantId: tenant.id, sortOrder: (last?.sortOrder ?? 0) + 1,
       // Serviço novo fica disponível para toda a equipe; restrinja na página de cada profissional.
       professionals: { create: professionals.map((p) => ({ professionalId: p.id })) },
+      rooms: { create: links.rooms },
+      resources: { create: links.resources },
     },
   });
   revalidatePath("/app/servicos");
@@ -69,6 +94,13 @@ export async function updateServiceAction(id: string, _prev: ActionResult, formD
   // updateMany com tenantId: nunca atualiza serviço de outro tenant, mesmo com id forjado.
   const res = await db.service.updateMany({ where: { id, tenantId: tenant.id }, data: { ...r.data, active: r.data.active ?? false } });
   if (res.count === 0) return fail("Procedimento não encontrado");
+  const links = await ownedLinks(tenant.id, r.roomIds, r.resources);
+  await db.$transaction([
+    db.serviceRoom.deleteMany({ where: { serviceId: id } }),
+    db.serviceResource.deleteMany({ where: { serviceId: id } }),
+    ...(links.rooms.length ? [db.serviceRoom.createMany({ data: links.rooms.map((x) => ({ serviceId: id, ...x })) })] : []),
+    ...(links.resources.length ? [db.serviceResource.createMany({ data: links.resources.map((x) => ({ serviceId: id, ...x })) })] : []),
+  ]);
   revalidatePath("/app/servicos");
   return success("Procedimento atualizado!");
 }
