@@ -52,7 +52,7 @@ WHATSAPP_TEMPLATE_LANGUAGE=pt_BR
 
 ## Templates
 
-### Solicitação de confirmação — `heeca_solicitacao_agendamento`
+### Solicitação de confirmação — `heeca_confirmacao`
 
 - **Categoria:** Utilidade (Utility)
 - **Idioma:** Português (BR) — `pt_BR`
@@ -61,16 +61,17 @@ WHATSAPP_TEMPLATE_LANGUAGE=pt_BR
 **Corpo** (cole exatamente assim):
 
 ```
-Olá, {{1}}! 💅 Recebemos sua solicitação de agendamento. Procedimento: {{2}}. Profissional: {{3}}. Data: {{4}} às {{5}}. Toque em Confirmar para garantir seu horário.
+Olá, {{1}}! {{2}} recebeu sua solicitação: {{3}} com {{4}}, {{5}} às {{6}}. Toque em Confirmar para garantir seu horário.
 ```
 
 | Variável | Conteúdo | Exemplo para aprovação |
 |---|---|---|
 | {{1}} | `cliente` | Maria |
-| {{2}} | `servico` | Alongamento em Fibra de Vidro |
-| {{3}} | `profissional` | Ana |
-| {{4}} | `data` | 20/09/2026 |
-| {{5}} | `hora` | 14:00 |
+| {{2}} | `estabelecimento` | Studio Ana |
+| {{3}} | `servico` | Alongamento em gel |
+| {{4}} | `profissional` | Ana |
+| {{5}} | `data` | 20/09/2026 |
+| {{6}} | `hora` | 14:00 |
 
 **Botões:**
 
@@ -78,7 +79,7 @@ Olá, {{1}}! 💅 Recebemos sua solicitação de agendamento. Procedimento: {{2}
 2. **Resposta rápida** — texto: `Remarcar` (o payload é dinâmico, preenchido pelo sistema com `confirm:<token>` / `cancel:<token>`)
 3. **Resposta rápida** — texto: `Cancelar` (o payload é dinâmico, preenchido pelo sistema com `confirm:<token>` / `cancel:<token>`)
 
-### Agendamento confirmado — `heeca_agendamento_confirmado`
+### Agendamento confirmado — `heeca_confirmado`
 
 - **Categoria:** Utilidade (Utility)
 - **Idioma:** Português (BR) — `pt_BR`
@@ -87,16 +88,17 @@ Olá, {{1}}! 💅 Recebemos sua solicitação de agendamento. Procedimento: {{2}
 **Corpo** (cole exatamente assim):
 
 ```
-✨ Agendamento confirmado! Procedimento: {{1}}. Profissional: {{2}}. Data: {{3}} às {{4}}. {{5}}Estamos te esperando! 💅
+Horário confirmado ✅ {{1}}: {{2}} com {{3}}, {{4}} às {{5}}. {{6}}Até lá!
 ```
 
 | Variável | Conteúdo | Exemplo para aprovação |
 |---|---|---|
-| {{1}} | `servico` | Alongamento em Fibra de Vidro |
-| {{2}} | `profissional` | Ana |
-| {{3}} | `data` | 20/09/2026 |
-| {{4}} | `hora` | 14:00 |
-| {{5}} | `orientacoes` | Chegue alguns minutos antes e venha sem esmalte.  |
+| {{1}} | `estabelecimento` | Studio Ana |
+| {{2}} | `servico` | Alongamento em gel |
+| {{3}} | `profissional` | Ana |
+| {{4}} | `data` | 20/09/2026 |
+| {{5}} | `hora` | 14:00 |
+| {{6}} | `orientacoes` | Chegue alguns minutos antes.  |
 
 **Botões:**
 
@@ -111,14 +113,14 @@ _Sem botões._
 **Corpo** (cole exatamente assim):
 
 ```
-Oi, {{1}}! 💖 Lembrando que seu horário em {{3}} está agendado para {{4}}, às {{5}}. Procedimento: {{2}}. Até lá! ✨
+Oi, {{1}}! Lembrete de {{2}}: {{3}}, {{4}} às {{5}}. Se precisar mudar, use os botões abaixo.
 ```
 
 | Variável | Conteúdo | Exemplo para aprovação |
 |---|---|---|
 | {{1}} | `cliente` | Maria |
-| {{2}} | `servico` | Alongamento em Fibra de Vidro |
-| {{3}} | `estabelecimento` | Salão Bela Vista |
+| {{2}} | `estabelecimento` | Studio Ana |
+| {{3}} | `servico` | Alongamento em gel |
 | {{4}} | `quando` | amanhã |
 | {{5}} | `hora` | 14:00 |
 
@@ -127,7 +129,7 @@ Oi, {{1}}! 💖 Lembrando que seu horário em {{3}} está agendado para {{4}}, �
 1. **Resposta rápida** — texto: `Remarcar` (o payload é dinâmico, preenchido pelo sistema com `confirm:<token>` / `cancel:<token>`)
 2. **Resposta rápida** — texto: `Cancelar` (o payload é dinâmico, preenchido pelo sistema com `confirm:<token>` / `cancel:<token>`)
 
-### Cancelamento — `heeca_agendamento_cancelado`
+### Cancelamento — `heeca_cancelado`
 
 - **Categoria:** Utilidade (Utility)
 - **Idioma:** Português (BR) — `pt_BR`
@@ -136,20 +138,21 @@ Oi, {{1}}! 💖 Lembrando que seu horário em {{3}} está agendado para {{4}}, �
 **Corpo** (cole exatamente assim):
 
 ```
-Seu agendamento de {{1}} em {{2}} às {{3}} foi cancelado. Caso queira, é só marcar um novo horário pelo botão abaixo.
+Aviso de {{1}}: seu horário de {{2}}, {{3}} às {{4}}, foi cancelado. Para marcar de novo, é só tocar no botão.
 ```
 
 | Variável | Conteúdo | Exemplo para aprovação |
 |---|---|---|
-| {{1}} | `servico` | Alongamento em Fibra de Vidro |
-| {{2}} | `data` | 20/09/2026 |
-| {{3}} | `hora` | 14:00 |
+| {{1}} | `estabelecimento` | Studio Ana |
+| {{2}} | `servico` | Alongamento em gel |
+| {{3}} | `data` | 20/09/2026 |
+| {{4}} | `hora` | 14:00 |
 
 **Botões:**
 
-1. **Acessar site** — texto: `Agendar novamente`, tipo de URL: **Dinâmica**, URL: `{APP_URL}/agendar/{{1}}` (exemplo: `https://app.seudominio.com.br/agendar/salao-bela-vista`)
+1. **Acessar site** — texto: `Agendar novamente`, tipo de URL: **Dinâmica**, URL: `{APP_URL}https://heeca.com.br/a/{{1}}` (exemplo: `https://app.seudominio.com.brhttps://heeca.com.br/a/salao-bela-vista`)
 
-### Pedido de pagamento (sinal) — `heeca_pedido_sinal`
+### Pedido de pagamento (sinal) — `heeca_sinal`
 
 - **Categoria:** Utilidade (Utility)
 - **Idioma:** Português (BR) — `pt_BR`
@@ -158,23 +161,24 @@ Seu agendamento de {{1}} em {{2}} às {{3}} foi cancelado. Caso queira, é só m
 **Corpo** (cole exatamente assim):
 
 ```
-Olá, {{1}}! Para garantir seu horário de *{{2}}* em {{3}} às {{4}}, pague o sinal de {{5}} via Pix em até {{6}}. Toque no botão para ver o QR Code.
+Olá, {{1}}! Para garantir seu horário de {{2}} em {{3}}, {{4}} às {{5}}, pague o sinal de {{6}} via Pix em até {{7}}. Toque no botão para ver o QR Code.
 ```
 
 | Variável | Conteúdo | Exemplo para aprovação |
 |---|---|---|
 | {{1}} | `cliente` | Maria |
-| {{2}} | `servico` | Alongamento em Fibra de Vidro |
-| {{3}} | `data` | 20/09/2026 |
-| {{4}} | `hora` | 14:00 |
-| {{5}} | `valor_sinal` | R$ 20,00 |
-| {{6}} | `prazo_pagamento` | 30 minutos |
+| {{2}} | `servico` | Alongamento em gel |
+| {{3}} | `estabelecimento` | Studio Ana |
+| {{4}} | `data` | 20/09/2026 |
+| {{5}} | `hora` | 14:00 |
+| {{6}} | `valor_sinal` | R$ 20,00 |
+| {{7}} | `prazo_pagamento` | 30 minutos |
 
 **Botões:**
 
-1. **Acessar site** — texto: `Pagar sinal`, tipo de URL: **Dinâmica**, URL: `{APP_URL}/pagar/{{1}}` (exemplo: `https://app.seudominio.com.br/pagar/salao-bela-vista`)
+1. **Acessar site** — texto: `Pagar sinal`, tipo de URL: **Dinâmica**, URL: `{APP_URL}https://heeca.com.br/p/{{1}}` (exemplo: `https://app.seudominio.com.brhttps://heeca.com.br/p/salao-bela-vista`)
 
-### Reagendamento — `heeca_agendamento_remarcado`
+### Reagendamento — `heeca_remarcado`
 
 - **Categoria:** Utilidade (Utility)
 - **Idioma:** Português (BR) — `pt_BR`
@@ -183,14 +187,15 @@ Olá, {{1}}! Para garantir seu horário de *{{2}}* em {{3}} às {{4}}, pague o s
 **Corpo** (cole exatamente assim):
 
 ```
-🔁 Seu horário de {{1}} foi remarcado para {{2}} às {{3}}. Qualquer dúvida, é só responder esta mensagem. 💅
+Aviso de {{1}}: seu horário de {{2}} foi remarcado para {{3}} às {{4}}. Qualquer dúvida, responda esta mensagem.
 ```
 
 | Variável | Conteúdo | Exemplo para aprovação |
 |---|---|---|
-| {{1}} | `servico` | Alongamento em Fibra de Vidro |
-| {{2}} | `data` | 21/09/2026 |
-| {{3}} | `hora` | 15:00 |
+| {{1}} | `estabelecimento` | Studio Ana |
+| {{2}} | `servico` | Alongamento em gel |
+| {{3}} | `data` | 21/09/2026 |
+| {{4}} | `hora` | 15:00 |
 
 **Botões:**
 

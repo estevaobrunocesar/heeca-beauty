@@ -33,59 +33,62 @@ export type MetaTemplateSpec = {
  * e `sendTemplate` envia os parâmetros nesta mesma ordem.
  */
 export const META_TEMPLATES: Record<OutboundKind, MetaTemplateSpec> = {
+  // Catálogo UNIFICADO da plataforma (fonte da verdade: heeca_notify/src/lib/templates.ts) — o mesmo para todas as marcas;
+  // o vocabulário do segmento entra pelas variáveis. Botões de URL mandam só o sufixo: o Notify prefixa o produto e o
+  // portal (heeca.com.br/a/… e /p/…) redireciona para o host da marca.
   REQUEST_CONFIRMATION: {
-    defaultName: "heeca_solicitacao_agendamento",
+    defaultName: "heeca_confirmacao",
     category: "UTILITY",
-    body: "Olá, {{1}}! 💅 Recebemos sua solicitação de agendamento. Procedimento: {{2}}. Profissional: {{3}}. Data: {{4}} às {{5}}. Toque em Confirmar para garantir seu horário.",
-    params: ["cliente", "servico", "profissional", "data", "hora"],
+    body: "Olá, {{1}}! {{2}} recebeu sua solicitação: {{3}} com {{4}}, {{5}} às {{6}}. Toque em Confirmar para garantir seu horário.",
+    params: ["cliente", "estabelecimento", "servico", "profissional", "data", "hora"],
     buttons: [
       { type: "quick_reply", text: "Confirmar", payload: (v) => `confirm:${v.token}` },
       { type: "quick_reply", text: "Remarcar", payload: (v) => `reschedule:${v.token}` },
       { type: "quick_reply", text: "Cancelar", payload: (v) => `cancel:${v.token}` },
     ],
-    example: ["Maria", "Alongamento em Fibra de Vidro", "Ana", "20/09/2026", "14:00"],
+    example: ["Maria", "Studio Ana", "Alongamento em gel", "Ana", "20/09/2026", "14:00"],
   },
   CONFIRMED: {
-    defaultName: "heeca_agendamento_confirmado",
+    defaultName: "heeca_confirmado",
     category: "UTILITY",
-    body: "✨ Agendamento confirmado! Procedimento: {{1}}. Profissional: {{2}}. Data: {{3}} às {{4}}. {{5}}Estamos te esperando! 💅",
-    // {{5}} = orientações pré-atendimento (pode ser vazio; a Meta exige valor, então enviamos " ")
-    params: ["servico", "profissional", "data", "hora", "orientacoes"],
-    example: ["Alongamento em Fibra de Vidro", "Ana", "20/09/2026", "14:00", "Chegue alguns minutos antes e venha sem esmalte. "],
+    body: "Horário confirmado ✅ {{1}}: {{2}} com {{3}}, {{4}} às {{5}}. {{6}}Até lá!",
+    // {{6}} = orientações pré-atendimento (pode ser vazio; a Meta exige valor, então enviamos " ")
+    params: ["estabelecimento", "servico", "profissional", "data", "hora", "orientacoes"],
+    example: ["Studio Ana", "Alongamento em gel", "Ana", "20/09/2026", "14:00", "Chegue alguns minutos antes. "],
   },
   REMINDER: {
     defaultName: "heeca_lembrete",
     category: "UTILITY",
-    body: "Oi, {{1}}! 💖 Lembrando que seu horário em {{3}} está agendado para {{4}}, às {{5}}. Procedimento: {{2}}. Até lá! ✨",
-    params: ["cliente", "servico", "estabelecimento", "quando", "hora"],
+    body: "Oi, {{1}}! Lembrete de {{2}}: {{3}}, {{4}} às {{5}}. Se precisar mudar, use os botões abaixo.",
+    params: ["cliente", "estabelecimento", "servico", "quando", "hora"],
     buttons: [
       { type: "quick_reply", text: "Remarcar", payload: (v) => `reschedule:${v.token}` },
       { type: "quick_reply", text: "Cancelar", payload: (v) => `cancel:${v.token}` },
     ],
-    example: ["Maria", "Corte + Escova", "Salão Bela Vista", "amanhã", "14:00"],
+    example: ["Maria", "Studio Ana", "Alongamento em gel", "amanhã", "14:00"],
   },
   CANCELLED: {
-    defaultName: "heeca_agendamento_cancelado",
+    defaultName: "heeca_cancelado",
     category: "UTILITY",
-    body: "Seu agendamento de {{1}} em {{2}} às {{3}} foi cancelado. Caso queira, é só marcar um novo horário pelo botão abaixo.",
-    params: ["servico", "data", "hora"],
-    buttons: [{ type: "url", text: "Agendar novamente", urlPrefix: "/agendar/", suffix: (v) => v.slug }],
-    example: ["Alongamento em Fibra de Vidro", "20/09/2026", "14:00"],
+    body: "Aviso de {{1}}: seu horário de {{2}}, {{3}} às {{4}}, foi cancelado. Para marcar de novo, é só tocar no botão.",
+    params: ["estabelecimento", "servico", "data", "hora"],
+    buttons: [{ type: "url", text: "Agendar novamente", urlPrefix: "https://heeca.com.br/a/", suffix: (v) => v.slug }],
+    example: ["Studio Ana", "Alongamento em gel", "20/09/2026", "14:00"],
   },
   PAYMENT_REQUEST: {
-    defaultName: "heeca_pedido_sinal",
+    defaultName: "heeca_sinal",
     category: "UTILITY",
-    body: "Olá, {{1}}! Para garantir seu horário de *{{2}}* em {{3}} às {{4}}, pague o sinal de {{5}} via Pix em até {{6}}. Toque no botão para ver o QR Code.",
-    params: ["cliente", "servico", "data", "hora", "valor_sinal", "prazo_pagamento"],
-    buttons: [{ type: "url", text: "Pagar sinal", urlPrefix: "/pagar/", suffix: (v) => v.token }],
-    example: ["Maria", "Alongamento em Fibra de Vidro", "20/09/2026", "14:00", "R$ 20,00", "30 minutos"],
+    body: "Olá, {{1}}! Para garantir seu horário de {{2}} em {{3}}, {{4}} às {{5}}, pague o sinal de {{6}} via Pix em até {{7}}. Toque no botão para ver o QR Code.",
+    params: ["cliente", "servico", "estabelecimento", "data", "hora", "valor_sinal", "prazo_pagamento"],
+    buttons: [{ type: "url", text: "Pagar sinal", urlPrefix: "https://heeca.com.br/p/", suffix: (v) => v.token }],
+    example: ["Maria", "Alongamento em gel", "Studio Ana", "20/09/2026", "14:00", "R$ 20,00", "30 minutos"],
   },
   RESCHEDULED: {
-    defaultName: "heeca_agendamento_remarcado",
+    defaultName: "heeca_remarcado",
     category: "UTILITY",
-    body: "🔁 Seu horário de {{1}} foi remarcado para {{2}} às {{3}}. Qualquer dúvida, é só responder esta mensagem. 💅",
-    params: ["servico", "data", "hora"],
-    example: ["Alongamento em Fibra de Vidro", "21/09/2026", "15:00"],
+    body: "Aviso de {{1}}: seu horário de {{2}} foi remarcado para {{3}} às {{4}}. Qualquer dúvida, responda esta mensagem.",
+    params: ["estabelecimento", "servico", "data", "hora"],
+    example: ["Studio Ana", "Alongamento em gel", "21/09/2026", "15:00"],
   },
 };
 
