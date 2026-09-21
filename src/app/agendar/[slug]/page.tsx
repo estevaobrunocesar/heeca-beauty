@@ -9,6 +9,7 @@ import { policyItems, hasPolicies } from "@/lib/policies";
 import { BookingWizard } from "./booking-wizard";
 import { marcaDoTenant, mesmaMarcaDoHost } from "@/lib/marca-atual";
 import { paleta } from "@/lib/marca";
+import { HEECA_PRODUCTS, HeecaAppIcon, type HeecaProduct } from "@/components/brand/logo";
 import { Gallery } from "./gallery";
 
 async function loadTenant(slug: string) {
@@ -69,8 +70,8 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
   const single = tenant.professionals.length === 1;
 
   return (
-    <div className="min-h-full bg-[#f7f1ee]" style={paleta(marca) as React.CSSProperties}>
-      <main className="mx-auto min-h-full max-w-lg bg-white shadow-[0_0_60px_-20px_rgba(120,40,70,0.25)]">
+    <div className="min-h-full bg-canvas" style={paleta(marca) as React.CSSProperties}>
+      <main className="mx-auto min-h-full max-w-lg bg-white sm:my-6 sm:min-h-0 sm:rounded-[20px] sm:border sm:border-line">
         {/* Cabeçalho */}
         <header className="relative overflow-hidden bg-gradient-to-br from-brand-950 via-brand-900 to-brand-700 px-5 pb-10 pt-10 text-white">
           <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-brand-400/20 blur-3xl" />
@@ -225,7 +226,8 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
           )}
         </section>
 
-        <footer className="px-5 py-5 text-center text-xs text-zinc-400">
+        <footer className="flex items-center justify-center gap-2 px-5 py-5 text-xs text-zinc-400">
+          <HeecaAppIcon product={(marca.slug in HEECA_PRODUCTS ? marca.slug : "heeca") as HeecaProduct} size={20} radius={5} />
           Agendamento online por <span className="font-medium text-zinc-500">{marca.nome}</span>
         </footer>
       </main>
