@@ -1,54 +1,37 @@
-import Link from "next/link";
+import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
 import { marcaDoTenant } from "@/lib/marca-atual";
 import { paleta } from "@/lib/marca";
-import { logoutAction } from "@/actions/auth";
-import { DashboardNav } from "@/components/dashboard/nav";
+import { fmtDate } from "@/lib/dates";
+import { AppShell } from "@/components/dashboard/shell";
+
+const PAPEIS = { OWNER: "dona", MANAGER: "gerente", RECEPTION: "recepção", STAFF: "profissional" } as const;
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { tenant, user, role, canManage, professional } = await requireAuth();
+  const { tenant, user, role, canManage, professional, professionals } = await requireAuth();
   const marca = marcaDoTenant(tenant);
+  // Pendências do sino: visitas da minha equipe ainda sem confirmação da cliente.
+  const pendentes = await db.appointment.count({
+    where: { tenantId: tenant.id, status: { in: ["PENDING", "AWAITING_CONFIRMATION", "RESCHEDULE_REQUESTED"] }, startsAt: { gte: new Date() }, items: { some: { professionalId: { in: professionals.map((p) => p.id) } } } },
+  });
+  const hoje = fmtDate(new Date(), tenant.timezone, "EEE, d 'de' MMM").replace(".", "");
+  const especialidade = user.professional?.specialties?.split(",")[0]?.trim();
 
   return (
-    <div className="flex flex-1" style={paleta(marca) as React.CSSProperties}>
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-zinc-200 bg-white px-4 py-5 md:flex">
-        <Link href="/app" className="mb-6 px-2 text-xl font-semibold tracking-tight">
-          {marca.nome}<span className="text-brand-500">.</span>
-        </Link>
-        <DashboardNav variant="sidebar" role={role} salas={tenant.salasAtivas} />
-        <div className="mt-auto space-y-3 border-t border-zinc-200 pt-4">
-          <Link
-            href={`/agendar/${tenant.slug}`}
-            target="_blank"
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-100"
-          >
-            <span>↗</span> Ver página pública
-          </Link>
-          <div className="px-3">
-            <p className="truncate text-sm font-medium text-zinc-800">{tenant.businessName}</p>
-            <p className="truncate text-xs text-zinc-500">{user.email}</p>
-            {!canManage && user.professional && <Link href={`/app/equipe/${professional.id}`} className="mt-1 block text-xs text-zinc-600 hover:underline">Meu perfil e horários</Link>}
-          </div>
-          <form action={logoutAction} className="px-3">
-            <button className="text-xs text-zinc-500 hover:text-zinc-900">Sair</button>
-          </form>
-        </div>
-      </aside>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3 md:hidden">
-          <span className="text-lg font-semibold">
-            {marca.nome}<span className="text-brand-500">.</span>
-          </span>
-          <form action={logoutAction}>
-            <button className="text-xs text-zinc-500">Sair</button>
-          </form>
-        </header>
-        <main className="flex-1 px-4 py-6 pb-24 md:px-8 md:py-8">
-          <div className="mx-auto max-w-6xl">{children}</div>
-        </main>
-      </div>
-      <DashboardNav variant="bottom" role={role} salas={tenant.salasAtivas} />
+    <div className="flex min-h-full flex-1" style={paleta(marca) as React.CSSProperties}>
+      <AppShell
+        marca={marca}
+        tenant={{ slug: tenant.slug, businessName: tenant.businessName, heecaPlan: tenant.heecaPlan, salasAtivas: tenant.salasAtivas }}
+        user={{ name: user.name, email: user.email }}
+        role={role}
+        canManage={canManage}
+        professionalId={professional.id}
+        professionalLabel={[especialidade, PAPEIS[role]].filter(Boolean).join(" · ")}
+        pendentes={pendentes}
+        hoje={hoje.charAt(0).toUpperCase() + hoje.slice(1)}
+      >
+        {children}
+      </AppShell>
     </div>
   );
 }

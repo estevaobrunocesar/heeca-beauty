@@ -8,7 +8,7 @@ import { Alert } from "@/components/ui/alert";
 type Values = {
   businessName: string; ownerName: string; slug: string; description: string;
   logoUrl: string; phone: string; address: string; city: string; instagram: string;
-  legalName: string; cnpj: string; email: string; website: string; photoUrls: string; openingHours: string; extraInfo: string;
+  legalName: string; cnpj: string; email: string; website: string; photoUrls: string; openingHours: string; extraInfo: string; metaMensal: string;
 };
 
 export function BusinessForm({ initial, base }: { initial: Values; base: string }) {
@@ -109,6 +109,12 @@ export function BusinessForm({ initial, base }: { initial: Values; base: string 
       <div>
         <label className="label" htmlFor="extraInfo">Informações adicionais</label>
         <textarea id="extraInfo" name="extraInfo" rows={2} className="input" defaultValue={initial.extraInfo} placeholder="Estacionamento no local, acessível para cadeirantes, aceitamos cartão e Pix." />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="metaMensal">Meta de faturamento do mês (R$) <span className="font-normal text-zinc-400">(opcional)</span></label>
+        <input id="metaMensal" name="metaMensal" inputMode="decimal" className="input max-w-xs" defaultValue={initial.metaMensal} placeholder="6.000,00" />
+        <p className="mt-1 text-xs text-zinc-500">Aparece como anel de progresso no painel inicial.</p>
       </div>
 
       <div className="pt-2">

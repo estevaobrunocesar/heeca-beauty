@@ -3,7 +3,7 @@ import { STATUS_LABELS, STATUS_STYLES } from "@/lib/appointments/status";
 
 export function StatusBadge({ status, className = "" }: { status: AppointmentStatus; className?: string }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${STATUS_STYLES[status]} ${className}`}>
+    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold ${STATUS_STYLES[status]} ${className}`}>
       {STATUS_LABELS[status]}
     </span>
   );

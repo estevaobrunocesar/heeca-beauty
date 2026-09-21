@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export type NavRole = "OWNER" | "MANAGER" | "RECEPTION" | "STAFF";
 
@@ -29,13 +30,13 @@ export function DashboardNav({ variant, role, salas = false }: { variant: "sideb
 
   if (variant === "sidebar") {
     return (
-      <nav className="flex flex-col gap-1">
+      <nav className="flex flex-col gap-0.5">
         {visible.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
-              isActive(href) ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+            className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13.5px] font-medium transition ${
+              isActive(href) ? "bg-brand-600 text-white" : "text-ink-2 hover:bg-zinc-100 hover:text-ink"
             }`}
           >
             <Icon className="h-4 w-4" />
@@ -46,28 +47,59 @@ export function DashboardNav({ variant, role, salas = false }: { variant: "sideb
     );
   }
 
-  // Mobile: barra inferior
+  // Mobile: barra inferior com os 4 principais + "Mais" (folha com o restante)
+  return <BottomNav visible={visible} isActive={isActive} />;
+}
+
+function BottomNav({ visible, isActive }: { visible: typeof items; isActive: (href: string) => boolean }) {
+  const [aberto, setAberto] = useState(false);
+  const pathname = usePathname();
+  useEffect(() => { setAberto(false); }, [pathname]);
+  const principais = visible.slice(0, 4);
+  const resto = visible.slice(4);
+  const restoAtivo = resto.some((i) => isActive(i.href));
+  const item = (href: string, label: string, Icon: (p: IconProps) => React.JSX.Element, ativo: boolean) => (
+    <Link key={href} href={href} className={`flex flex-col items-center gap-0.5 py-2 text-[10.5px] font-medium ${ativo ? "text-brand-600" : "text-mut"}`}>
+      <Icon className="h-5 w-5" />
+      {label}
+    </Link>
+  );
   return (
-    <nav style={{ gridTemplateColumns: `repeat(${visible.length}, minmax(0, 1fr))` }} className="fixed inset-x-0 bottom-0 z-20 grid border-t border-zinc-200 bg-white/95 backdrop-blur md:hidden">
-      {visible.map(({ href, label, icon: Icon }) => (
-        <Link
-          key={href}
-          href={href}
-          className={`flex flex-col items-center gap-0.5 py-2 text-[11px] ${
-            isActive(href) ? "text-zinc-900" : "text-zinc-500"
-          }`}
-        >
-          <Icon className="h-5 w-5" />
-          {label}
-        </Link>
-      ))}
-    </nav>
+    <>
+      {aberto && (
+        <div className="fixed inset-0 z-20 bg-ink/30 md:hidden" onClick={() => setAberto(false)}>
+          <div className="absolute inset-x-0 bottom-[60px] rounded-t-2xl border-t border-line bg-white p-3 pb-2" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-line" />
+            <div className="grid grid-cols-4 gap-1">
+              {resto.map(({ href, label, icon: Icon }) => (
+                <Link key={href} href={href} className={`flex flex-col items-center gap-1 rounded-[10px] px-1 py-2.5 text-[10.5px] font-medium ${isActive(href) ? "bg-brand-50 text-brand-700" : "text-ink-2"}`}>
+                  <Icon className="h-5 w-5" />
+                  <span className="truncate">{label}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        {principais.map(({ href, label, icon: Icon }) => item(href, label, Icon, isActive(href)))}
+        {resto.length > 0 && (
+          <button type="button" onClick={() => setAberto((v) => !v)} className={`flex flex-col items-center gap-0.5 py-2 text-[10.5px] font-medium ${aberto || restoAtivo ? "text-brand-600" : "text-mut"}`}>
+            <MoreIcon className="h-5 w-5" />
+            Mais
+          </button>
+        )}
+      </nav>
+    </>
   );
 }
 
 type IconProps = { className?: string };
 const base = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, viewBox: "0 0 24 24" };
 
+function MoreIcon(p: IconProps) {
+  return <svg {...base} {...p}><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>;
+}
 function HomeIcon(p: IconProps) {
   return <svg {...base} {...p}><path d="M3 11.5 12 4l9 7.5" /><path d="M5 10v10h14V10" /></svg>;
 }

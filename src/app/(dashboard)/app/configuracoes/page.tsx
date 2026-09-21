@@ -27,6 +27,7 @@ export default async function BusinessSettingsPage() {
           photoUrls: tenant.photoUrls.join("\n"),
           openingHours: tenant.openingHours ?? "",
           extraInfo: tenant.extraInfo ?? "",
+          metaMensal: tenant.metaMensalCents != null ? (tenant.metaMensalCents / 100).toFixed(2).replace(".", ",") : "",
         }}
         base={base}
       />

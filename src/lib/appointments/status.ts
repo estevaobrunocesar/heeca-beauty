@@ -14,15 +14,15 @@ export const STATUS_LABELS: Record<AppointmentStatus, string> = {
 
 /** Classes Tailwind para o "badge" de status. */
 export const STATUS_STYLES: Record<AppointmentStatus, string> = {
-  PENDING: "bg-amber-100 text-amber-800 ring-amber-200",
-  AWAITING_PAYMENT: "bg-violet-100 text-violet-800 ring-violet-200",
-  AWAITING_CONFIRMATION: "bg-amber-100 text-amber-800 ring-amber-200",
-  CONFIRMED: "bg-emerald-100 text-emerald-800 ring-emerald-200",
-  RESCHEDULE_REQUESTED: "bg-orange-100 text-orange-800 ring-orange-200",
-  CANCELLED_BY_CLIENT: "bg-zinc-100 text-zinc-600 ring-zinc-200",
-  CANCELLED_BY_PROFESSIONAL: "bg-zinc-100 text-zinc-600 ring-zinc-200",
-  COMPLETED: "bg-sky-100 text-sky-800 ring-sky-200",
-  NO_SHOW: "bg-rose-100 text-rose-800 ring-rose-200",
+  PENDING: "bg-amber-50 text-amber-700",
+  AWAITING_PAYMENT: "bg-brand-50 text-brand-700",
+  AWAITING_CONFIRMATION: "bg-amber-50 text-amber-700",
+  CONFIRMED: "bg-emerald-50 text-emerald-700",
+  RESCHEDULE_REQUESTED: "bg-orange-50 text-orange-700",
+  CANCELLED_BY_CLIENT: "bg-zinc-100 text-zinc-600",
+  CANCELLED_BY_PROFESSIONAL: "bg-zinc-100 text-zinc-600",
+  COMPLETED: "bg-sky-50 text-sky-700",
+  NO_SHOW: "bg-rose-50 text-rose-700",
 };
 
 export const CANCELLED_STATUSES: AppointmentStatus[] = ["CANCELLED_BY_CLIENT", "CANCELLED_BY_PROFESSIONAL"];

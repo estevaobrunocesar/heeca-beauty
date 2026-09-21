@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
 import { normalizePhone } from "@/lib/phone";
 import { slugify } from "@/lib/slug";
+import { parseMoneyToCents } from "@/lib/money";
 import { fail, success, type ActionResult } from "@/lib/action-result";
 import type { MessageKind } from "@/generated/prisma/enums";
 import { DEFAULT_TEMPLATES } from "@/lib/whatsapp/templates";
@@ -32,6 +33,7 @@ const businessSchema = z.object({
   photoUrls: z.string().trim().max(2000).optional().or(z.literal("")), // uma URL por linha
   openingHours: z.string().trim().max(200).optional().or(z.literal("")),
   extraInfo: z.string().trim().max(600).optional().or(z.literal("")),
+  metaMensal: z.string().trim().max(20).optional().or(z.literal("")), // R$ do mês; vazio = sem meta
 });
 
 /** CNPJ: guarda só os 14 dígitos; vazio = null; qualquer outra coisa é inválido. */
@@ -71,6 +73,7 @@ export async function updateBusinessAction(_prev: ActionResult, formData: FormDa
         phone, address: d.address || null, city: d.city || null,
         legalName: d.legalName || null, cnpj, email: d.email || null, website: d.website || null,
         photoUrls, openingHours: d.openingHours || null, extraInfo: d.extraInfo || null,
+        metaMensalCents: d.metaMensal ? parseMoneyToCents(d.metaMensal) : null,
         // Aceita "@ana.nails", "ana.nails" ou a URL completa; guarda só o handle.
         instagram: d.instagram ? d.instagram.replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/^@/, "").replace(/\/.*$/, "") || null : null,
       },

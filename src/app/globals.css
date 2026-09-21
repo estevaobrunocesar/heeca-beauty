@@ -1,22 +1,39 @@
 @import "tailwindcss";
 
+/*
+ * Padrão de painel Heeca (docs/PADRAO-PAINEL.md na raiz da plataforma): tela clara (#f5f5f7), cartões brancos de
+ * cantos 14px sem sombra, tipografia Inter, ícones em pastilhas coloridas, e UMA cor de ação — o acento da família
+ * do produto (--color-brand-*), aplicado inline pelo layout a partir de `paleta(marca)`. Os valores abaixo são o
+ * fallback (rosé da família beleza). Nada de cor de marca fixa nos componentes: sempre brand-*.
+ */
 @theme {
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-  /* Orquídea — acento do Heeca Beauty (as demais cores seguem o kit de marca). O Nail usa o rosé #c8306f; aqui o tom vira violeta para os dois produtos não se confundirem no portal. */
-  --color-brand-50: #f8f0fb;
-  --color-brand-100: #f1e1f7;
-  --color-brand-200: #e4c4ef;
-  --color-brand-300: #d09be2;
-  --color-brand-400: #b86bd0;
-  --color-brand-500: #9e46b8;
-  --color-brand-600: #86329c;
-  --color-brand-700: #6e2880;
-  --color-brand-800: #5b2369;
-  --color-brand-900: #4c1f57;
-  --color-brand-950: #2e0f36;
+  --font-display: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
-  --font-display: var(--font-cormorant), Georgia, serif;
+  --color-brand-50: #fcf2f6;
+  --color-brand-100: #f9e1ea;
+  --color-brand-200: #f2c3d6;
+  --color-brand-300: #e693b4;
+  --color-brand-400: #d95b8e;
+  --color-brand-500: #cf3d79;
+  --color-brand-600: #c8306f;
+  --color-brand-700: #a4275b;
+  --color-brand-800: #88214b;
+  --color-brand-900: #701b3e;
+  --color-brand-950: #441026;
+
+  /* Neutros do painel */
+  --color-canvas: #f5f5f7;
+  --color-ink: #111114;
+  --color-ink-2: #3f3f46;
+  --color-mut: #71717a;
+  --color-mut-2: #a1a1aa;
+  --color-line: #ebebef;
+  --color-line-2: #f0f0f3;
+
+  --radius-card: 14px;
+  --radius-ctl: 10px;
 }
 
 :root {
@@ -24,40 +41,41 @@
 }
 
 body {
-  @apply bg-zinc-50 text-zinc-900 antialiased;
+  @apply bg-canvas text-ink antialiased;
 }
 
 /* ───── Componentes base (Tailwind v4: @utility permite reuso via @apply) ───── */
 
 @utility input {
-  @apply w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-xs
-    placeholder:text-zinc-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200
+  @apply w-full rounded-[10px] border border-line bg-white px-3 py-2.5 text-sm text-ink
+    placeholder:text-mut-2 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100
     disabled:cursor-not-allowed disabled:bg-zinc-100;
 }
 
 @utility label {
-  @apply mb-1 block text-sm font-medium text-zinc-700;
+  @apply mb-1 block text-[12.5px] font-medium text-ink-2;
 }
 
 @utility btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition
-    focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex items-center justify-center gap-2 rounded-[10px] px-4 py-2.5 text-[13px] font-semibold transition
+    focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 disabled:cursor-not-allowed disabled:opacity-50;
 }
 
+/* Ação principal = acento da família (no painel a cor de ação é a do produto) */
 @utility btn-primary {
-  @apply btn bg-zinc-900 text-white hover:bg-zinc-800;
+  @apply btn bg-brand-600 text-white hover:bg-brand-700;
 }
 
 @utility btn-accent {
-  @apply btn bg-brand-500 text-white hover:bg-brand-600;
+  @apply btn bg-brand-600 text-white hover:bg-brand-700;
 }
 
 @utility btn-secondary {
-  @apply btn border border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-50;
+  @apply btn border border-line bg-white text-ink hover:bg-zinc-50;
 }
 
 @utility btn-ghost {
-  @apply btn text-zinc-700 hover:bg-zinc-100;
+  @apply btn text-ink-2 hover:bg-zinc-100;
 }
 
 @utility btn-danger {
@@ -65,5 +83,35 @@ body {
 }
 
 @utility card {
-  @apply rounded-xl border border-zinc-200 bg-white shadow-xs;
+  @apply rounded-[14px] border border-line bg-white;
+}
+
+/* Cabeçalho de cartão: título à esquerda, ação/link à direita */
+@utility card-hd {
+  @apply mb-3 flex items-center justify-between gap-3;
+}
+
+@utility card-title {
+  @apply text-[13.5px] font-semibold text-ink;
+}
+
+/* Pastilha de ícone (KPI, ação rápida, item de lista) */
+@utility tile {
+  @apply grid size-9 shrink-0 place-items-center rounded-[10px];
+}
+
+/* Etiquetas de status */
+@utility tag {
+  @apply inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold;
+}
+@utility tag-ok { @apply tag bg-emerald-50 text-emerald-700; }
+@utility tag-warn { @apply tag bg-amber-50 text-amber-700; }
+@utility tag-info { @apply tag bg-sky-50 text-sky-700; }
+@utility tag-bad { @apply tag bg-rose-50 text-rose-700; }
+@utility tag-mut { @apply tag bg-zinc-100 text-zinc-600; }
+@utility tag-acc { @apply tag bg-brand-50 text-brand-700; }
+
+/* Link discreto de "ver tudo" */
+@utility link-mut {
+  @apply text-xs font-medium text-mut hover:text-ink;
 }

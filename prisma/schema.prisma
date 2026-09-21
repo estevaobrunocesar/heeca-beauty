@@ -18,6 +18,7 @@ model Tenant {
   segmentos    String[] @default([]) // segmentos que o estabelecimento atende (slugs de marca.segmentos); vazio = ainda não escolheu
   salasAtivas  Boolean  @default(false) // agenda por sala e recursos (spa, clínica): liga o cadastro de salas e o "onde" no serviço
   faltaConsomeSessao Boolean @default(true) // pacotes: falta (NO_SHOW) desconta uma sessão? Política do estabelecimento
+  metaMensalCents    Int? // meta de faturamento do mês (anel do painel); null = sem meta
   slug         String  @unique // app.com.br/agendar/<slug>
   businessName String
   ownerName    String
