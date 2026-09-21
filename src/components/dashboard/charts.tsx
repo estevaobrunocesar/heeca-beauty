@@ -79,17 +79,18 @@ export type Fatia = { rotulo: string; valor: number; cor: string };
 export function Donut({ fatias, totalRotulo }: { fatias: Fatia[]; totalRotulo: string }) {
   const total = fatias.reduce((n, f) => n + f.valor, 0) || 1;
   const C = 2 * Math.PI * 44;
-  let acumulado = 0;
+  // Comprimento e deslocamento de cada fatia calculados antes de renderizar (nada de mutar durante o map)
+  const arcos = fatias.reduce<{ f: Fatia; len: number; offset: number }[]>((acc, f) => {
+    const offset = acc.length ? acc[acc.length - 1].offset + acc[acc.length - 1].len : 0;
+    return [...acc, { f, len: (f.valor / total) * C, offset }];
+  }, []);
   return (
     <div className="grid grid-cols-[112px_1fr] items-center gap-3">
       <svg viewBox="0 0 120 120" className="size-28" role="img" aria-label="Distribuição">
         <circle cx="60" cy="60" r="44" fill="none" stroke="var(--color-line-2)" strokeWidth="16" />
-        {fatias.map((f) => {
-          const len = (f.valor / total) * C;
-          const el = <circle key={f.rotulo} cx="60" cy="60" r="44" fill="none" stroke={f.cor} strokeWidth="16" strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-acumulado} transform="rotate(-90 60 60)" />;
-          acumulado += len;
-          return el;
-        })}
+        {arcos.map(({ f, len, offset }) => (
+          <circle key={f.rotulo} cx="60" cy="60" r="44" fill="none" stroke={f.cor} strokeWidth="16" strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-offset} transform="rotate(-90 60 60)" />
+        ))}
         <text x="60" y="57" textAnchor="middle" fontSize="9" fill="var(--color-mut)">Total</text>
         <text x="60" y="71" textAnchor="middle" fontSize="12" fontWeight="600" fill="var(--color-ink)">{totalRotulo}</text>
       </svg>

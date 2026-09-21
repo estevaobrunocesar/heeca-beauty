@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export type NavRole = "OWNER" | "MANAGER" | "RECEPTION" | "STAFF";
 
@@ -52,9 +52,11 @@ export function DashboardNav({ variant, role, salas = false }: { variant: "sideb
 }
 
 function BottomNav({ visible, isActive }: { visible: typeof items; isActive: (href: string) => boolean }) {
-  const [aberto, setAberto] = useState(false);
+  // A folha "Mais" fica aberta só na rota em que foi aberta: navegar fecha sem precisar de efeito.
+  const [abertoEm, setAbertoEm] = useState<string | null>(null);
   const pathname = usePathname();
-  useEffect(() => { setAberto(false); }, [pathname]);
+  const aberto = abertoEm === pathname;
+  const setAberto = (v: boolean) => setAbertoEm(v ? pathname : null);
   const principais = visible.slice(0, 4);
   const resto = visible.slice(4);
   const restoAtivo = resto.some((i) => isActive(i.href));
@@ -84,7 +86,7 @@ function BottomNav({ visible, isActive }: { visible: typeof items; isActive: (hr
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         {principais.map(({ href, label, icon: Icon }) => item(href, label, Icon, isActive(href)))}
         {resto.length > 0 && (
-          <button type="button" onClick={() => setAberto((v) => !v)} className={`flex flex-col items-center gap-0.5 py-2 text-[10.5px] font-medium ${aberto || restoAtivo ? "text-brand-600" : "text-mut"}`}>
+          <button type="button" onClick={() => setAberto(!aberto)} className={`flex flex-col items-center gap-0.5 py-2 text-[10.5px] font-medium ${aberto || restoAtivo ? "text-brand-600" : "text-mut"}`}>
             <MoreIcon className="h-5 w-5" />
             Mais
           </button>
