@@ -9,7 +9,7 @@ const KIT = join(here, "..", "..", "brand", "dist");
 const OUT = join(here, "..", "public", "brand");
 const MARCAS = ["beauty", "wellness"]; // manter igual a src/lib/marca.ts
 // Marca ainda "planned" no kit (brand/products.csv): usa os arquivos desta como provisórios (mesma família/cor).
-const PROVISORIA = "nail";
+const PROVISORIA = "beauty";
 
 const FILES = (m) => ({
   "favicon.svg": `favicon/heeca-${m}.svg`,
