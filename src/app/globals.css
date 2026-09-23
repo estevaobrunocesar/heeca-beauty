@@ -115,3 +115,8 @@ body {
 @utility link-mut {
   @apply text-xs font-medium text-mut hover:text-ink;
 }
+
+/* Nome do produto e slogan do componente Logo (../brand): o logotipo é curva, o texto é Inter. */
+:root {
+  --font-ui: var(--font-inter);
+}
