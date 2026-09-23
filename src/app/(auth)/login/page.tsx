@@ -14,6 +14,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
     <>
       <h1 className="text-xl font-semibold">Entrar</h1>
       <p className="mt-1 text-sm text-zinc-500">Acesse o painel do seu estabelecimento.</p>
+      {sp.sessao === "encerrada" && (
+        <div className="mt-4">
+          <Alert kind="info">Sua sessão foi encerrada. Entre novamente.</Alert>
+        </div>
+      )}
       {sp.redefinida && (
         <div className="mt-4">
           <Alert kind="success">Senha redefinida! Faça login.</Alert>

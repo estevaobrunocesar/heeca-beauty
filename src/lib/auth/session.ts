@@ -68,8 +68,9 @@ export async function requireAuth() {
   });
   // Isolamento entre produtos: um estabelecimento só é servido pelo host da sua marca (lib/marca-atual.ts).
   if (!user || user.tenantId !== session.tenantId || !(await mesmaMarcaDoHost(user.tenant))) {
-    await destroySession();
-    redirect("/login");
+    // A sessão é inválida e precisa ser descartada, mas apagar cookie durante o render
+    // é proibido (Next 16): quem apaga é o Route Handler /sair, para onde mandamos.
+    redirect("/sair");
   }
   // Assinatura bloqueada no portal Heeca (inadimplência/cancelamento): painel fecha, página pública segue.
   if (user.tenant.heecaBlocked) redirect("/bloqueado");
