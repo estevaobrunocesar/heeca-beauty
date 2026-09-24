@@ -1,7 +1,8 @@
 /**
  * Abstração do envio de WhatsApp.
- * Implementações: ConsoleProvider (dev) e MetaCloudProvider (WhatsApp Business Cloud API).
- * Outros provedores (Z-API, Twilio, Evolution...) basta implementar esta interface.
+ * Implementações: ConsoleProvider (dev), HeecaNotifyProvider (produção — o produto nunca fala
+ * com a Meta, ver src/lib/whatsapp/providers/notify.ts) e MetaCloudProvider (uso direto, fora do
+ * caminho padrão de produção). Outros provedores bastam implementar esta interface.
  */
 
 export type QuickReplyButton = { id: string; title: string }; // title: máx. 20 caracteres na Meta
