@@ -10,7 +10,10 @@ import { escolherPacote, itemCabeNoPacote, progresso, statusDaSessao, statusDoPa
  */
 export const regraFaltaDe = (t: { faltaConsomeSessao: boolean }): RegraFalta => (t.faltaConsomeSessao ? "CONSOME" : "LIBERA");
 
-const pacoteInclude = { sessions: { select: { status: true } } } as const;
+const pacoteInclude = { sessions: { select: { status: true } }, protocol: { select: { steps: { select: { serviceId: true } } } } } as const;
+
+/** Serviços das etapas do protocolo do plano (vazio se não for plano de protocolo). Alimenta o escopo em rules.ts. */
+export const protocolServiceIds = (p: { protocol: { steps: { serviceId: string }[] } | null }): string[] => p.protocol?.steps.map((s) => s.serviceId) ?? [];
 
 export async function progressoDe(tenantId: string, clientPackageId: string, regra: RegraFalta): Promise<Progresso | null> {
   const p = await db.clientPackage.findFirst({ where: { id: clientPackageId, tenantId }, include: pacoteInclude });
@@ -38,7 +41,8 @@ export async function vincularVisita(tenant: { id: string; faltaConsomeSessao: b
     include: { items: { orderBy: { sortOrder: "asc" }, include: { service: { select: { categoryId: true } }, packageSession: { select: { id: true } } } } },
   });
   if (!appt) return 0;
-  const pacotes = await db.clientPackage.findMany({ where: { tenantId: tenant.id, clientId: appt.clientId, status: "ACTIVE" }, include: pacoteInclude });
+  const pacotes = (await db.clientPackage.findMany({ where: { tenantId: tenant.id, clientId: appt.clientId, status: "ACTIVE" }, include: pacoteInclude }))
+    .map((p) => ({ ...p, protocolServiceIds: protocolServiceIds(p) }));
   if (pacotes.length === 0) return 0;
   const regra = regraFaltaDe(tenant);
   const disponiveis = new Map(pacotes.map((p) => [p.id, progresso(p, p.sessions, regra).disponiveis]));
@@ -63,7 +67,7 @@ export async function vincularItem(tenant: { id: string; faltaConsomeSessao: boo
   ]);
   if (!pk || !item) throw new Error("Pacote ou atendimento não encontrado.");
   if (item.packageSession) throw new Error("Este atendimento já está vinculado a um pacote.");
-  const cabe = itemCabeNoPacote(pk, { clientId: item.appointment.clientId, serviceId: item.serviceId, categoryId: item.service.categoryId });
+  const cabe = itemCabeNoPacote({ ...pk, protocolServiceIds: protocolServiceIds(pk) }, { clientId: item.appointment.clientId, serviceId: item.serviceId, categoryId: item.service.categoryId });
   if (!cabe.ok) throw new Error(cabe.motivo);
   const regra = regraFaltaDe(tenant);
   const prog = progresso(pk, pk.sessions, regra);

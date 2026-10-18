@@ -25,7 +25,7 @@ async function manager() {
 const packageSchema = z.object({
   name: z.string().trim().min(2, "Informe o nome do pacote").max(80),
   description: z.string().trim().max(300).optional().or(z.literal("")),
-  scope: z.string().regex(/^(any|service:[a-z0-9]+|category:[a-z0-9]+)$/i, "Escolha o que o pacote cobre"),
+  scope: z.string().regex(/^(any|service:[a-z0-9]+|category:[a-z0-9]+|protocol:[a-z0-9]+)$/i, "Escolha o que o pacote cobre"),
   sessionsCount: z.coerce.number().int().min(1, "Ao menos 1 sessão").max(200),
   validityDays: z.coerce.number().int().min(0).max(3650).optional(),
   price: z.string().trim().min(1, "Informe o preço"),
@@ -39,8 +39,12 @@ async function parsePackage(tenantId: string, formData: FormData) {
   const priceCents = parseMoneyToCents(p.data.price);
   if (priceCents == null) return { ok: false as const, error: "Preço inválido" };
   const [kind, id] = p.data.scope.split(":");
-  let serviceId: string | null = null, categoryId: string | null = null;
-  if (kind === "service") {
+  let serviceId: string | null = null, categoryId: string | null = null, protocolId: string | null = null;
+  if (kind === "protocol") {
+    const pr = await db.protocol.findFirst({ where: { id, tenantId, active: true, steps: { some: {} } }, select: { id: true } });
+    if (!pr) return { ok: false as const, error: "Protocolo não encontrado (precisa estar ativo e ter etapas)" };
+    protocolId = pr.id;
+  } else if (kind === "service") {
     const s = await db.service.findFirst({ where: { id, tenantId, deletedAt: null, isAddOn: false }, select: { id: true } });
     if (!s) return { ok: false as const, error: "Serviço não encontrado" };
     serviceId = s.id;
@@ -48,7 +52,7 @@ async function parsePackage(tenantId: string, formData: FormData) {
     categoryId = await ownedCategoryId(tenantId, id);
     if (!categoryId) return { ok: false as const, error: "Categoria não encontrada" };
   }
-  return { ok: true as const, data: { name: p.data.name, description: p.data.description || null, serviceId, categoryId, sessionsCount: p.data.sessionsCount, validityDays: p.data.validityDays || null, priceCents, onlineVisible: p.data.onlineVisible ?? false, active: p.data.active ?? true } };
+  return { ok: true as const, data: { name: p.data.name, description: p.data.description || null, serviceId, categoryId, protocolId, sessionsCount: p.data.sessionsCount, validityDays: p.data.validityDays || null, priceCents, onlineVisible: p.data.onlineVisible ?? false, active: p.data.active ?? true } };
 }
 
 export async function createPackageAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
@@ -83,30 +87,61 @@ export async function togglePackageAction(id: string) {
 
 const saleSchema = z.object({
   clientId: z.string().min(1, "Escolha o cliente"),
-  packageId: z.string().min(1, "Escolha o pacote"),
+  // O que está sendo vendido: um pacote do catálogo ou (módulo clínico) um protocolo direto, sem pacote.
+  source: z.string().regex(/^(package|protocol):[a-z0-9]+$/i, "Escolha o pacote ou o protocolo"),
   startsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida"),
   price: z.string().trim().optional().or(z.literal("")),
   notes: z.string().trim().max(300).optional().or(z.literal("")),
+  // Só protocolo avulso (o pacote já traz sessões/validade do catálogo):
+  sessionsTotal: z.coerce.number().int().min(1).max(200).optional(),
+  validityDays: z.coerce.number().int().min(0).max(3650).optional(),
+  // Módulo clínico (opcionais): origem e responsável pelo plano
+  assessmentId: z.string().optional().or(z.literal("")),
+  professionalId: z.string().optional().or(z.literal("")),
 });
 
-/** Vende um pacote do catálogo a um cliente: snapshot (escopo, sessões, validade, preço — editável na venda). */
+/**
+ * Vende a um cliente um pacote do catálogo ou um protocolo (plano avulso): snapshot de escopo, sessões,
+ * validade e preço — editáveis na venda, o catálogo não muda. Plano de protocolo guarda o protocolo, o
+ * intervalo sugerido e o objetivo; pode nascer de uma avaliação (que passa a apontar para ele).
+ */
 export async function sellPackageAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await manager();
   const p = saleSchema.safeParse(Object.fromEntries(formData));
   if (!p.success) return fail(p.error.issues[0].message);
-  const [client, pkg] = await Promise.all([
-    db.client.findFirst({ where: { id: p.data.clientId, tenantId: ctx.tenant.id }, select: { id: true } }),
-    db.package.findFirst({ where: { id: p.data.packageId, tenantId: ctx.tenant.id, active: true } }),
+  const [kind, sourceId] = p.data.source.split(":");
+  const tenantId = ctx.tenant.id;
+
+  const [client, pkg, protocolAvulso, assessment, pro] = await Promise.all([
+    db.client.findFirst({ where: { id: p.data.clientId, tenantId }, select: { id: true } }),
+    kind === "package" ? db.package.findFirst({ where: { id: sourceId, tenantId, active: true }, include: { protocol: { select: { id: true, intervalDays: true, objective: true } } } }) : null,
+    kind === "protocol" ? db.protocol.findFirst({ where: { id: sourceId, tenantId, active: true, steps: { some: {} } } }) : null,
+    p.data.assessmentId ? db.assessment.findFirst({ where: { id: p.data.assessmentId, tenantId }, select: { id: true, clientId: true, plan: { select: { id: true } } } }) : null,
+    p.data.professionalId ? db.professional.findFirst({ where: { id: p.data.professionalId, tenantId }, select: { id: true } }) : null,
   ]);
   if (!client) return fail("Cliente não encontrado");
-  if (!pkg) return fail("Pacote não encontrado");
-  const priceCents = p.data.price ? parseMoneyToCents(p.data.price) : pkg.priceCents;
+  if (kind === "package" && !pkg) return fail("Pacote não encontrado");
+  if (kind === "protocol" && !protocolAvulso) return fail("Protocolo não encontrado (precisa estar ativo e ter etapas)");
+  if (p.data.assessmentId) {
+    if (!assessment) return fail("Avaliação não encontrada");
+    if (assessment.clientId !== client.id) return fail("A avaliação é de outro cliente.");
+    if (assessment.plan) return fail("Esta avaliação já gerou um plano.");
+  }
+  if (p.data.professionalId && !pro) return fail("Profissional não encontrado");
+
+  // Origem → snapshot. Pacote: tudo do catálogo (protocolo do pacote incluso). Protocolo: sessões/validade informadas na venda.
+  const base = pkg
+    ? { packageId: pkg.id, serviceId: pkg.serviceId, categoryId: pkg.categoryId, protocolId: pkg.protocolId, name: pkg.name, sessionsTotal: pkg.sessionsCount, validityDays: pkg.validityDays, priceCents: pkg.priceCents, intervalDays: pkg.protocol?.intervalDays ?? null, objective: pkg.protocol?.objective ?? null }
+    : { packageId: null, serviceId: null, categoryId: null, protocolId: protocolAvulso!.id, name: protocolAvulso!.name, sessionsTotal: p.data.sessionsTotal ?? protocolAvulso!.sessionsCount, validityDays: p.data.validityDays ?? null, priceCents: 0, intervalDays: protocolAvulso!.intervalDays, objective: protocolAvulso!.objective };
+  const priceCents = p.data.price ? parseMoneyToCents(p.data.price) : base.priceCents;
   if (priceCents == null) return fail("Preço inválido");
+  if (!pkg && priceCents <= 0) return fail("Informe o valor do plano.");
   const startsAt = new Date(`${p.data.startsAt}T00:00:00Z`);
   const sold = await db.clientPackage.create({
     data: {
-      tenantId: ctx.tenant.id, clientId: client.id, packageId: pkg.id, serviceId: pkg.serviceId, categoryId: pkg.categoryId,
-      name: pkg.name, sessionsTotal: pkg.sessionsCount, startsAt, expiresAt: vencimento(startsAt, pkg.validityDays), priceCents, notes: p.data.notes || null,
+      tenantId, clientId: client.id, packageId: base.packageId, serviceId: base.serviceId, categoryId: base.categoryId, protocolId: base.protocolId,
+      assessmentId: assessment?.id ?? null, professionalId: pro?.id ?? null, objective: base.objective, intervalDays: base.intervalDays,
+      name: base.name, sessionsTotal: base.sessionsTotal, startsAt, expiresAt: vencimento(startsAt, base.validityDays), priceCents, notes: p.data.notes || null,
     },
   });
   revalidate(sold.id);

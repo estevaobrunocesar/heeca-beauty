@@ -13,7 +13,7 @@ import type { Marca } from "@/lib/marca";
  */
 export type ShellProps = {
   marca: Marca;
-  tenant: { slug: string; businessName: string; heecaPlan: string | null; salasAtivas: boolean };
+  tenant: { slug: string; businessName: string; heecaPlan: string | null; salasAtivas: boolean; clinicoAtivo: boolean };
   user: { name: string; email: string };
   role: NavRole;
   canManage: boolean;
@@ -48,7 +48,7 @@ export function AppShell({ marca, tenant, user, role, canManage, professionalId,
             <span className="block truncate text-[11px] font-medium text-mut">{tenant.businessName}</span>
           </span>
         </Link>
-        <DashboardNav variant="sidebar" role={role} salas={tenant.salasAtivas} />
+        <DashboardNav variant="sidebar" role={role} salas={tenant.salasAtivas} clinico={tenant.clinicoAtivo} />
         <div className="mt-auto space-y-3 pt-4">
           {plano && (
             <div className="rounded-[14px] border border-brand-100 bg-brand-50/60 p-4">
@@ -117,7 +117,7 @@ export function AppShell({ marca, tenant, user, role, canManage, professionalId,
           <div className="mx-auto max-w-[1240px]">{children}</div>
         </main>
       </div>
-      <DashboardNav variant="bottom" role={role} salas={tenant.salasAtivas} />
+      <DashboardNav variant="bottom" role={role} salas={tenant.salasAtivas} clinico={tenant.clinicoAtivo} />
     </div>
   );
 }

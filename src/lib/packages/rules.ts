@@ -15,6 +15,8 @@ export type EscopoPacote = {
   serviceId: string | null;
   /** …ou qualquer serviço desta categoria ("5 massagens"); ambos nulos = qualquer serviço. */
   categoryId: string | null;
+  /** Plano de protocolo (módulo clínico): serviços das etapas. Qualquer um deles cabe; a ordem é sugestão, não trava. */
+  protocolServiceIds?: string[];
 };
 export type EscopoItem = { clientId: string; serviceId: string; categoryId: string | null };
 
@@ -25,6 +27,9 @@ export type EscopoItem = { clientId: string; serviceId: string; categoryId: stri
 export function itemCabeNoPacote(pacote: EscopoPacote, item: EscopoItem): { ok: true } | { ok: false; motivo: string } {
   if (pacote.clientId !== item.clientId) return { ok: false, motivo: "O agendamento é de outro cliente." };
   if (pacote.serviceId) return pacote.serviceId === item.serviceId ? { ok: true } : { ok: false, motivo: "O pacote cobre só o serviço contratado." };
+  // Protocolo: qualquer etapa serve (a profissional pode repetir uma limpeza antes do peeling). Um protocolo sem etapas
+  // cadastradas não vira "vale tudo": cai nas regras abaixo.
+  if (pacote.protocolServiceIds?.length) return pacote.protocolServiceIds.includes(item.serviceId) ? { ok: true } : { ok: false, motivo: "Este serviço não faz parte do protocolo do plano." };
   if (pacote.categoryId) return pacote.categoryId === item.categoryId ? { ok: true } : { ok: false, motivo: "Este serviço não é da categoria do pacote." };
   return { ok: true };
 }
@@ -92,11 +97,11 @@ export function vencimento(inicio: Date, validityDays: number | null | undefined
 }
 
 /**
- * Qual pacote do cliente cobre este item? Preferência: pacote de serviço > de categoria > livre;
+ * Qual pacote do cliente cobre este item? Preferência: pacote de serviço > de protocolo > de categoria > livre;
  * entre iguais, o que vence primeiro. Só pacotes com saldo livre (`disponiveis` já decrementado pelo chamador).
  */
 export function escolherPacote<P extends EscopoPacote & { id: string; expiresAt: Date | null }>(pacotes: P[], disponiveis: Map<string, number>, item: EscopoItem): P | null {
-  const rank = (p: P) => (p.serviceId ? 0 : p.categoryId ? 1 : 2);
+  const rank = (p: P) => (p.serviceId ? 0 : p.protocolServiceIds?.length ? 1 : p.categoryId ? 2 : 3);
   return [...pacotes]
     .sort((a, b) => rank(a) - rank(b) || (a.expiresAt?.getTime() ?? Infinity) - (b.expiresAt?.getTime() ?? Infinity))
     .find((p) => (disponiveis.get(p.id) ?? 0) > 0 && itemCabeNoPacote(p, item).ok) ?? null;

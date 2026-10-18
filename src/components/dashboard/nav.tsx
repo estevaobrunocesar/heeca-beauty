@@ -6,25 +6,27 @@ import { useState } from "react";
 
 export type NavRole = "OWNER" | "MANAGER" | "RECEPTION" | "STAFF";
 
-// Quem vê cada item (SPEC §6). "manage" = dono e gerente; "commission" = todos menos recepção.
-const items: { href: string; label: string; icon: (p: IconProps) => React.JSX.Element; access: "all" | "manage" | "commission"; opcional?: "salas" }[] = [
+// Quem vê cada item (SPEC §6). "manage" = dono e gerente; "semRecepcao" = todos menos recepção (comissões e módulo clínico).
+const items: { href: string; label: string; icon: (p: IconProps) => React.JSX.Element; access: "all" | "manage" | "semRecepcao"; opcional?: "salas" | "clinico" }[] = [
   { href: "/app", label: "Início", icon: HomeIcon, access: "all" },
   { href: "/app/agenda", label: "Agenda", icon: CalendarIcon, access: "all" },
   { href: "/app/servicos", label: "Serviços", icon: ServicesIcon, access: "manage" },
   { href: "/app/clientes", label: "Clientes", icon: UsersIcon, access: "all" },
-  { href: "/app/comissoes", label: "Comissões", icon: CommissionIcon, access: "commission" },
+  { href: "/app/comissoes", label: "Comissões", icon: CommissionIcon, access: "semRecepcao" },
   { href: "/app/salas", label: "Salas", icon: RoomIcon, access: "manage", opcional: "salas" },
   { href: "/app/pacotes", label: "Pacotes", icon: PackageIcon, access: "manage" },
+  { href: "/app/avaliacoes", label: "Avaliações", icon: AssessmentIcon, access: "semRecepcao", opcional: "clinico" },
+  { href: "/app/protocolos", label: "Protocolos", icon: ProtocolIcon, access: "manage", opcional: "clinico" },
   { href: "/app/portfolio", label: "Portfólio", icon: GalleryIcon, access: "manage" },
   { href: "/app/equipe", label: "Equipe", icon: TeamIcon, access: "manage" },
   { href: "/app/configuracoes", label: "Configurações", icon: SettingsIcon, access: "manage" },
 ];
 
-export function DashboardNav({ variant, role, salas = false }: { variant: "sidebar" | "bottom"; role: NavRole; salas?: boolean }) {
+export function DashboardNav({ variant, role, salas = false, clinico = false }: { variant: "sidebar" | "bottom"; role: NavRole; salas?: boolean; clinico?: boolean }) {
   const canManage = role === "OWNER" || role === "MANAGER";
   const visible = items
-    .filter((i) => !i.opcional || (i.opcional === "salas" && salas))
-    .filter((i) => i.access === "all" || (i.access === "manage" && canManage) || (i.access === "commission" && role !== "RECEPTION"));
+    .filter((i) => !i.opcional || (i.opcional === "salas" && salas) || (i.opcional === "clinico" && clinico))
+    .filter((i) => i.access === "all" || (i.access === "manage" && canManage) || (i.access === "semRecepcao" && role !== "RECEPTION"));
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/app" ? pathname === "/app" : pathname.startsWith(href));
 
@@ -133,4 +135,12 @@ function RoomIcon(p: IconProps) {
 }
 function SettingsIcon(p: IconProps) {
   return <svg {...base} {...p}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>;
+}
+function AssessmentIcon(p: IconProps) {
+  // Prancheta com marcação
+  return <svg {...base} {...p}><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4h6v3H9z" /><path d="m9 13 2 2 4-4" /></svg>;
+}
+function ProtocolIcon(p: IconProps) {
+  // Etapas em sequência
+  return <svg {...base} {...p}><circle cx="6" cy="6" r="2" /><circle cx="18" cy="12" r="2" /><circle cx="6" cy="18" r="2" /><path d="M8 6h5a3 3 0 0 1 3 3v1M16 14v1a3 3 0 0 1-3 3H8" /></svg>;
 }

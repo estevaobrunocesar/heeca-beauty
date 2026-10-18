@@ -7,6 +7,7 @@ import { formatCents } from "@/lib/money";
 import { fmtDate } from "@/lib/dates";
 import { progresso, STATUS_PACOTE } from "@/lib/packages/rules";
 import { regraFaltaDe } from "@/lib/packages/service";
+import { moduloClinicoAtivo } from "@/lib/treatments/rules";
 import { CatalogManager } from "./catalog-manager";
 import { FaltaToggle } from "./falta-toggle";
 
@@ -21,11 +22,13 @@ export default async function PacotesPage({ searchParams }: PageProps<"/app/paco
   const sp = await searchParams;
   const filtro = sp.status === "todos" ? undefined : "ACTIVE";
 
-  const [catalogo, servicos, categorias, vendidos] = await Promise.all([
-    db.package.findMany({ where: { tenantId: tenant.id }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], include: { service: { select: { name: true } }, category: { select: { name: true } }, _count: { select: { sold: true } } } }),
+  const clinico = moduloClinicoAtivo(tenant.segmentos);
+  const [catalogo, servicos, categorias, vendidos, protocolos] = await Promise.all([
+    db.package.findMany({ where: { tenantId: tenant.id }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], include: { service: { select: { name: true } }, category: { select: { name: true } }, protocol: { select: { name: true } }, _count: { select: { sold: true } } } }),
     db.service.findMany({ where: { tenantId: tenant.id, deletedAt: null, isAddOn: false, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
     db.serviceCategory.findMany({ where: { tenantId: tenant.id }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
     db.clientPackage.findMany({ where: { tenantId: tenant.id, ...(filtro ? { status: filtro } : {}) }, orderBy: { createdAt: "desc" }, take: 100, include: { client: { select: { id: true, name: true } }, sessions: { select: { status: true } } } }),
+    clinico ? db.protocol.findMany({ where: { tenantId: tenant.id, active: true, steps: { some: {} } }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }) : [],
   ]);
   const regra = regraFaltaDe(tenant);
 
@@ -34,7 +37,7 @@ export default async function PacotesPage({ searchParams }: PageProps<"/app/paco
       <PageHeader
         title="Pacotes de sessões"
         description="Venda 5 ou 10 sessões de uma vez. Ao agendar um serviço coberto, a sessão é reservada; ao concluir, é debitada — o saldo é calculado, nunca digitado."
-        actions={<Link href="/app/pacotes/novo" className="btn-primary" aria-disabled={catalogo.length === 0}>+ Vender pacote</Link>}
+        actions={<Link href="/app/pacotes/novo" className="btn-primary" aria-disabled={catalogo.length === 0 && protocolos.length === 0}>+ Vender pacote</Link>}
       />
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <section className="space-y-3">
@@ -67,9 +70,10 @@ export default async function PacotesPage({ searchParams }: PageProps<"/app/paco
         </section>
         <aside className="space-y-4">
           <CatalogManager
-            packages={catalogo.map((c) => ({ id: c.id, name: c.name, description: c.description, scope: c.serviceId ? `service:${c.serviceId}` : c.categoryId ? `category:${c.categoryId}` : "any", scopeLabel: c.service?.name ?? (c.category ? `Categoria ${c.category.name}` : "Qualquer serviço"), sessionsCount: c.sessionsCount, validityDays: c.validityDays, priceCents: c.priceCents, priceLabel: formatCents(c.priceCents), active: c.active, onlineVisible: c.onlineVisible, sold: c._count.sold }))}
+            packages={catalogo.map((c) => ({ id: c.id, name: c.name, description: c.description, scope: c.serviceId ? `service:${c.serviceId}` : c.protocolId ? `protocol:${c.protocolId}` : c.categoryId ? `category:${c.categoryId}` : "any", scopeLabel: c.service?.name ?? (c.protocol ? `Protocolo ${c.protocol.name}` : c.category ? `Categoria ${c.category.name}` : "Qualquer serviço"), sessionsCount: c.sessionsCount, validityDays: c.validityDays, priceCents: c.priceCents, priceLabel: formatCents(c.priceCents), active: c.active, onlineVisible: c.onlineVisible, sold: c._count.sold }))}
             services={servicos}
             categories={categorias}
+            protocols={protocolos}
           />
           <FaltaToggle consome={tenant.faltaConsomeSessao} />
         </aside>

@@ -14,6 +14,8 @@ import { Avatar } from "@/components/dashboard/avatar";
 import { RegistroForm } from "./registro-form";
 import { perfilDoTenant } from "@/lib/marca-atual";
 import { lerFicha, resumoFicha } from "@/lib/clients/ficha";
+import { moduloClinicoAtivo } from "@/lib/treatments/rules";
+import { SessionEvolution } from "../../pacotes/[id]/clinical-tools";
 
 export default async function AppointmentDetailPage({ params }: PageProps<"/app/agendamentos/[id]">) {
   const { id } = await params;
@@ -24,7 +26,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
   const a = await db.appointment.findFirst({
     where: { id, tenantId: tenant.id, items: { some: { professionalId: { in: ctx.professionals.map((p) => p.id) } } } },
     include: {
-      items: { orderBy: { sortOrder: "asc" }, include: { professional: { select: { id: true, name: true, photoUrl: true } }, room: { select: { name: true } }, addOns: true, packageSession: { select: { status: true, clientPackage: { select: { id: true, name: true } } } } } },
+      items: { orderBy: { sortOrder: "asc" }, include: { professional: { select: { id: true, name: true, photoUrl: true } }, room: { select: { name: true } }, addOns: true, packageSession: { select: { id: true, status: true, productsUsed: true, evolution: true, clientPackage: { select: { id: true, name: true } } } } } },
       events: { orderBy: { createdAt: "asc" } },
       messages: { orderBy: { createdAt: "desc" } },
       payment: true,
@@ -64,6 +66,10 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
                       {it.packageSession && <Link href={`/app/pacotes/${it.packageSession.clientPackage.id}`} className="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-800 hover:underline">🎫 {it.packageSession.clientPackage.name}</Link>}
                       {(ctx.professionals.length > 1 || a.items.length > 1) && (
                         <span className="flex items-center gap-1 text-zinc-600"><Avatar name={it.professional.name} photoUrl={it.professional.photoUrl} size="sm" /> {it.professional.name}</span>
+                      )}
+                      {/* Evolução clínica da sessão (módulo Estética): gestão ou o profissional que atendeu; recepção não vê. */}
+                      {it.packageSession?.status === "DONE" && ctx.role !== "RECEPTION" && moduloClinicoAtivo(tenant.segmentos) && (ctx.canManage || ctx.professionals.some((p) => p.id === it.professional.id)) && (
+                        <div className="basis-full pl-[6.5rem]"><SessionEvolution sessionId={it.packageSession.id} productsUsed={it.packageSession.productsUsed} evolution={it.packageSession.evolution} /></div>
                       )}
                     </li>
                   ))}

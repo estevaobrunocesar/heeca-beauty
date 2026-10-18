@@ -93,6 +93,9 @@ model Tenant {
   resources         Resource[]
   packages          Package[]
   clientPackages    ClientPackage[]
+  protocols         Protocol[]
+  assessments       Assessment[]
+  packagePayments   ClientPackagePayment[]
   packageSessions   PackageSession[]
   messages          WhatsappMessage[]
   templates         MessageTemplate[]
@@ -172,6 +175,8 @@ model Professional {
   blocks           ScheduleBlock[]
   services         ProfessionalService[]
   preferredByClients Client[]            @relation("ClientPreferredProfessional")
+  assessments        Assessment[]
+  plans              ClientPackage[]
 
   @@index([tenantId])
 }
@@ -233,6 +238,8 @@ model Service {
   resources     ServiceResource[]
   packages      Package[]
   clientPackages ClientPackage[]
+  protocolSteps ProtocolStep[]
+  assessmentServices AssessmentService[]
 
   @@index([tenantId, active, sortOrder])
   @@index([tenantId, categoryId])
@@ -447,6 +454,7 @@ model Client {
   preferredProfessional Professional?     @relation("ClientPreferredProfessional", fields: [preferredProfessionalId], references: [id], onDelete: SetNull)
   appointments          Appointment[]
   packages              ClientPackage[]
+  assessments           Assessment[]
   messages              WhatsappMessage[]
 
   @@unique([tenantId, phone])
@@ -510,6 +518,7 @@ model Appointment {
   events   AppointmentEvent[]
   messages WhatsappMessage[]
   payment  Payment?
+  assessment Assessment?
 
   @@index([tenantId, startsAt])
   @@index([clientId, startsAt])
@@ -711,6 +720,7 @@ model Package {
   description   String?
   serviceId     String?
   categoryId    String?
+  protocolId    String? // N sessões seguindo as etapas de um protocolo (módulo clínico); exclusivo com serviceId/categoryId
   sessionsCount Int
   validityDays  Int? // prazo para usar a partir da compra; null = sem validade
   priceCents    Int
@@ -723,6 +733,7 @@ model Package {
   tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   service  Service?         @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   category ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  protocol Protocol?        @relation(fields: [protocolId], references: [id], onDelete: SetNull)
   sold     ClientPackage[]
 
   @@index([tenantId, active, sortOrder])
@@ -743,6 +754,12 @@ model ClientPackage {
   packageId     String?
   serviceId     String?
   categoryId    String?
+  // Módulo clínico (Estética): o plano pode nascer de um protocolo, de uma avaliação e ter profissional de referência.
+  protocolId     String?
+  assessmentId   String?             @unique
+  professionalId String?
+  objective      String? // "reduzir oleosidade e cravos"
+  intervalDays   Int? // espaçamento sugerido entre sessões (propõe a próxima data)
   name          String
   sessionsTotal Int
   startsAt      DateTime            @db.Date
@@ -754,12 +771,16 @@ model ClientPackage {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
-  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client   Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  package  Package?         @relation(fields: [packageId], references: [id], onDelete: SetNull)
-  service  Service?         @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  category ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  sessions PackageSession[]
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client       Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  package      Package?         @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  service      Service?         @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  category     ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  protocol     Protocol?        @relation(fields: [protocolId], references: [id], onDelete: SetNull)
+  assessment   Assessment?      @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+  professional Professional?    @relation(fields: [professionalId], references: [id], onDelete: SetNull)
+  sessions     PackageSession[]
+  payments     ClientPackagePayment[]
 
   @@index([tenantId, status, expiresAt])
   @@index([clientId, status])
@@ -780,6 +801,8 @@ model PackageSession {
   itemId          String?              @unique
   status          PackageSessionStatus @default(SCHEDULED)
   performedAt     DateTime?
+  productsUsed    String? // produtos/ativos aplicados na sessão (módulo clínico)
+  evolution       String? // evolução observada / anotações do profissional (módulo clínico)
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
@@ -788,4 +811,112 @@ model PackageSession {
   item          AppointmentItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
 
   @@index([clientPackageId, status])
+}
+
+// ───────────────────────── Módulo clínico (opção do segmento Estética) ─────────────────────────
+// Portado do Heeca Skin (absorvido pelo Beauty). O "plano de tratamento" do Skin É o ClientPackage daqui:
+// mesma regra de consumo, mesmo snapshot, mesmo saldo calculado. Só entra o que o pacote não tinha.
+
+/** Receita de tratamento: etapas ordenadas de serviços ("Limpeza → Esfoliação → Máscara") com sessões e intervalo sugeridos. */
+model Protocol {
+  id            String   @id @default(cuid())
+  tenantId      String
+  name          String
+  objective     String? // "reduzir oleosidade e cravos", "flacidez abdominal"
+  sessionsCount Int // número de sessões sugerido
+  intervalDays  Int? // intervalo sugerido entre sessões
+  products      String? // produtos/ativos usados (texto livre até existir Estoque)
+  notes         String?
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  steps       ProtocolStep[]
+  packages    Package[]
+  plans       ClientPackage[]
+  assessments Assessment[] // avaliações que o recomendaram
+
+  @@index([tenantId, active, sortOrder])
+}
+
+/** Etapa ordenada do protocolo: um serviço do catálogo; `notes` guarda a orientação daquela etapa. */
+model ProtocolStep {
+  id         String  @id @default(cuid())
+  protocolId String
+  serviceId  String
+  order      Int
+  notes      String?
+
+  protocol Protocol @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [serviceId], references: [id])
+
+  @@unique([protocolId, order])
+  @@index([serviceId])
+}
+
+/** Avaliação inicial: queixa, achados, serviços e protocolo recomendados. Pode virar um plano (ClientPackage.assessmentId). */
+model Assessment {
+  id                    String   @id @default(cuid())
+  tenantId              String
+  clientId              String
+  professionalId        String
+  appointmentId         String?  @unique // visita em que foi feita (opcional: pode ser registrada sem horário)
+  performedAt           DateTime
+  complaints            String? // queixa principal / o que a cliente quer tratar
+  analysis              String? // achados (tipo de pele, lesões, sensibilidade…)
+  notes                 String?
+  recommendedProtocolId String?
+  suggestedSessions     Int?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client              Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  professional        Professional        @relation(fields: [professionalId], references: [id])
+  appointment         Appointment?        @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  recommendedProtocol Protocol?           @relation(fields: [recommendedProtocolId], references: [id], onDelete: SetNull)
+  recommendedServices AssessmentService[]
+  plan                ClientPackage? // plano que nasceu desta avaliação
+
+  @@index([tenantId, performedAt])
+  @@index([clientId, performedAt])
+}
+
+model AssessmentService {
+  assessmentId String
+  serviceId    String
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  service    Service    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([assessmentId, serviceId])
+  @@index([serviceId])
+}
+
+enum PlanPaymentMethod {
+  PIX
+  CASH
+  CREDIT
+  DEBIT
+  TRANSFER
+}
+
+/** Recebimento de um plano/pacote vendido: à vista ou em parcelas, qualquer forma. (O `Payment` é só o sinal Pix da visita.) */
+model ClientPackagePayment {
+  id              String            @id @default(cuid())
+  tenantId        String
+  clientPackageId String
+  amountCents     Int
+  method          PlanPaymentMethod
+  paidAt          DateTime          @default(now())
+  notes           String?
+  createdAt       DateTime          @default(now())
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientPackage ClientPackage @relation(fields: [clientPackageId], references: [id], onDelete: Cascade)
+
+  @@index([clientPackageId])
+  @@index([tenantId, paidAt])
 }

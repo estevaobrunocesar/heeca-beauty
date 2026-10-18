@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
+import { moduloClinicoAtivo } from "@/lib/treatments/rules";
 import { marcaDoTenant } from "@/lib/marca-atual";
 import { paleta } from "@/lib/marca";
 import { fmtDate } from "@/lib/dates";
@@ -21,7 +22,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="flex min-h-full flex-1" style={paleta(marca) as React.CSSProperties}>
       <AppShell
         marca={marca}
-        tenant={{ slug: tenant.slug, businessName: tenant.businessName, heecaPlan: tenant.heecaPlan, salasAtivas: tenant.salasAtivas }}
+        tenant={{ slug: tenant.slug, businessName: tenant.businessName, heecaPlan: tenant.heecaPlan, salasAtivas: tenant.salasAtivas, clinicoAtivo: moduloClinicoAtivo(tenant.segmentos) }}
         user={{ name: user.name, email: user.email }}
         role={role}
         canManage={canManage}

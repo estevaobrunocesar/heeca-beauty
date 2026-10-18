@@ -10,7 +10,7 @@ export type CatalogRow = { id: string; name: string; description: string | null;
 type Opt = { id: string; name: string };
 
 /** Catálogo de pacotes: lista + criar/editar inline. O escopo decide o que a sessão pode cobrir. */
-export function CatalogManager({ packages, services, categories }: { packages: CatalogRow[]; services: Opt[]; categories: Opt[] }) {
+export function CatalogManager({ packages, services, categories, protocols }: { packages: CatalogRow[]; services: Opt[]; categories: Opt[]; protocols: Opt[] }) {
   const [novo, setNovo] = useState(packages.length === 0);
   return (
     <section className="card">
@@ -22,17 +22,17 @@ export function CatalogManager({ packages, services, categories }: { packages: C
         {!novo && <button className="btn-secondary px-3 py-1 text-xs" onClick={() => setNovo(true)}>+ Pacote</button>}
       </div>
       <div className="divide-y divide-zinc-100">
-        {packages.map((p) => <CatalogLine key={p.id} pkg={p} services={services} categories={categories} />)}
-        {novo && <PackageForm services={services} categories={categories} onDone={() => setNovo(false)} />}
+        {packages.map((p) => <CatalogLine key={p.id} pkg={p} services={services} categories={categories} protocols={protocols} />)}
+        {novo && <PackageForm services={services} categories={categories} protocols={protocols} onDone={() => setNovo(false)} />}
       </div>
     </section>
   );
 }
 
-function CatalogLine({ pkg, services, categories }: { pkg: CatalogRow; services: Opt[]; categories: Opt[] }) {
+function CatalogLine({ pkg, services, categories, protocols }: { pkg: CatalogRow; services: Opt[]; categories: Opt[]; protocols: Opt[] }) {
   const [editing, setEditing] = useState(false);
   const [pending, start] = useTransition();
-  if (editing) return <PackageForm initial={pkg} services={services} categories={categories} onDone={() => setEditing(false)} />;
+  if (editing) return <PackageForm initial={pkg} services={services} categories={categories} protocols={protocols} onDone={() => setEditing(false)} />;
   return (
     <div className={`px-4 py-3 text-sm ${pkg.active ? "" : "opacity-50"}`}>
       <div className="flex items-start justify-between gap-2">
@@ -49,7 +49,7 @@ function CatalogLine({ pkg, services, categories }: { pkg: CatalogRow; services:
   );
 }
 
-function PackageForm({ initial, services, categories, onDone }: { initial?: CatalogRow; services: Opt[]; categories: Opt[]; onDone: () => void }) {
+function PackageForm({ initial, services, categories, protocols, onDone }: { initial?: CatalogRow; services: Opt[]; categories: Opt[]; protocols: Opt[]; onDone: () => void }) {
   const action = initial ? updatePackageAction.bind(null, initial.id) : createPackageAction;
   const [state, formAction] = useActionState<ActionResult, FormData>(async (prev, fd) => { const r = await action(prev, fd); if (r?.ok) onDone(); return r; }, null);
   return (
@@ -59,6 +59,7 @@ function PackageForm({ initial, services, categories, onDone }: { initial?: Cata
       <select name="scope" className="input" defaultValue={initial?.scope ?? "any"}>
         <option value="any">Qualquer serviço</option>
         {categories.length > 0 && <optgroup label="Qualquer serviço da categoria">{categories.map((c) => <option key={c.id} value={`category:${c.id}`}>{c.name}</option>)}</optgroup>}
+        {protocols.length > 0 && <optgroup label="Seguindo um protocolo (qualquer etapa)">{protocols.map((p) => <option key={p.id} value={`protocol:${p.id}`}>{p.name}</option>)}</optgroup>}
         {services.length > 0 && <optgroup label="Só este serviço">{services.map((s) => <option key={s.id} value={`service:${s.id}`}>{s.name}</option>)}</optgroup>}
       </select>
       <div className="grid grid-cols-3 gap-2">
