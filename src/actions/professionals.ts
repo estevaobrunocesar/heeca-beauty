@@ -7,11 +7,12 @@ import { requireAuth, requireProfessionalAccess } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/password";
 import { hhmmToMinutes, WEEKDAY_NAMES } from "@/lib/dates";
 import { fail, success, type ActionResult } from "@/lib/action-result";
+import { discardReplaced, guardImageUrl, IMAGE_REJECTED } from "@/lib/storage/guard";
 
 const profileSchema = z.object({
   name: z.string().trim().min(2, "Informe o nome").max(80),
   bio: z.string().trim().max(300).optional().or(z.literal("")),
-  photoUrl: z.string().trim().url("URL da foto inválida").optional().or(z.literal("")),
+  photoUrl: z.string().trim().max(2000).optional().or(z.literal("")), // URL do nosso bucket (upload); validada em guardImageUrl
   phone: z.string().trim().max(30).optional().or(z.literal("")),
   email: z.string().trim().email("E-mail inválido").optional().or(z.literal("")),
   specialties: z.string().trim().max(120).optional().or(z.literal("")),
@@ -34,6 +35,8 @@ export async function createProfessionalAction(_prev: ActionResult, formData: Fo
   const parsed = profileSchema.safeParse({ ...Object.fromEntries(formData), active: true });
   if (!parsed.success) return fail(parsed.error.issues[0].message);
   const d = parsed.data;
+  const photo = guardImageUrl(ctx.tenant.id, d.photoUrl);
+  if (!photo.ok) return fail(IMAGE_REJECTED);
 
   const [last, services] = await Promise.all([
     db.professional.findFirst({ where: { tenantId: ctx.tenant.id }, orderBy: { sortOrder: "desc" } }),
@@ -45,7 +48,7 @@ export async function createProfessionalAction(_prev: ActionResult, formData: Fo
       tenantId: ctx.tenant.id,
       name: d.name,
       bio: d.bio || null,
-      photoUrl: d.photoUrl || null,
+      photoUrl: photo.url,
       phone: d.phone || null, email: d.email || null, specialties: d.specialties || null,
       commissionPercent: pct(d.commissionPercent),
       sortOrder: (last?.sortOrder ?? 0) + 1,
@@ -71,6 +74,11 @@ export async function updateProfessionalAction(id: string, _prev: ActionResult, 
   const parsed = profileSchema.safeParse({ ...Object.fromEntries(formData), active: formData.get("active") === "on" });
   if (!parsed.success) return fail(parsed.error.issues[0].message);
   const d = parsed.data;
+  // Foto: só do nosso bucket; a URL externa já gravada (legado) pode ser mantida até a troca.
+  const before = await db.professional.findFirst({ where: { id, tenantId: ctx.tenant.id }, select: { photoUrl: true } });
+  if (!before) return fail("Profissional não encontrado");
+  const photo = guardImageUrl(ctx.tenant.id, d.photoUrl, before.photoUrl);
+  if (!photo.ok) return fail(IMAGE_REJECTED);
 
   // STAFF edita só perfil; ativar/desativar, serviços e comissões são do responsável.
   const serviceIds = formData.getAll("serviceIds").map(String);
@@ -85,7 +93,7 @@ export async function updateProfessionalAction(id: string, _prev: ActionResult, 
     await tx.professional.update({
       where: { id },
       data: {
-        name: d.name, bio: d.bio || null, photoUrl: d.photoUrl || null,
+        name: d.name, bio: d.bio || null, photoUrl: photo.url,
         phone: d.phone || null, email: d.email || null, specialties: d.specialties || null,
         ...(ctx.canManage ? { active: d.active ?? false, commissionPercent: pct(d.commissionPercent) } : {}),
       },
@@ -98,6 +106,7 @@ export async function updateProfessionalAction(id: string, _prev: ActionResult, 
       }
     }
   });
+  await discardReplaced(ctx.tenant.id, before.photoUrl, photo.url); // apaga do bucket a foto trocada/removida
   revalidateTeam(id);
   return success("Profissional atualizado!");
 }

@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createPortfolioItemAction, updatePortfolioItemAction } from "@/actions/portfolio";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Alert } from "@/components/ui/alert";
+import { ImageField } from "@/components/ui/image-field";
 import type { ActionResult } from "@/lib/action-result";
 import { categoryIcon, type CategoryRef } from "@/lib/services/categories";
 
@@ -16,29 +17,16 @@ export function PortfolioItemForm({ initial, categories }: { initial?: Portfolio
   const router = useRouter();
   const action = initial?.id ? updatePortfolioItemAction.bind(null, initial.id) : createPortfolioItemAction;
   const [state, formAction] = useActionState<ActionResult, FormData>(action, null);
-  const [preview, setPreview] = useState(initial?.imageUrl ?? "");
 
   useEffect(() => {
     if (state?.ok) router.push("/app/portfolio");
   }, [state, router]);
 
   return (
-    <form action={formAction} className="card grid max-w-3xl gap-6 p-6 sm:grid-cols-[220px_1fr]">
-      <div className="aspect-square overflow-hidden rounded-xl bg-zinc-100">
-        {preview ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={preview} alt="" className="h-full w-full object-cover" onError={() => setPreview("")} />
-        ) : (
-          <div className="flex h-full items-center justify-center text-4xl">💅</div>
-        )}
-      </div>
+    <form action={formAction} className="card max-w-2xl p-6">
       <div className="space-y-4">
         {state && !state.ok && <Alert>{state.error}</Alert>}
-        <div>
-          <label className="label" htmlFor="imageUrl">URL da foto</label>
-          <input id="imageUrl" name="imageUrl" type="url" required className="input" defaultValue={initial?.imageUrl ?? ""} placeholder="https://..." onChange={(e) => setPreview(e.target.value)} />
-          <p className="mt-1 text-xs text-zinc-500">Cole o link de uma imagem (ex.: Google Drive, Imgur ou do próprio Instagram). Upload direto chega em breve.</p>
-        </div>
+        <ImageField name="imageUrl" kind="portfolio" shape="wide" required label="Foto do trabalho" defaultValue={initial?.imageUrl} hint="JPG, PNG, WebP ou HEIC, até 8 MB. A foto é ajustada e guardada no seu espaço no Heeca." />
         <div className="grid gap-4 sm:grid-cols-[1fr_200px]">
           <div>
             <label className="label" htmlFor="title">Nome do trabalho</label>

@@ -12,6 +12,7 @@ import type { MessageKind } from "@/generated/prisma/enums";
 import { DEFAULT_TEMPLATES } from "@/lib/whatsapp/templates";
 import { marcaDoTenant } from "@/lib/marca-atual";
 import { garantirCategoriasDosSegmentos } from "@/lib/tenant-bootstrap";
+import { discardReplaced, guardImageUrl, guardImageUrls, IMAGE_REJECTED } from "@/lib/storage/guard";
 
 // ───────── Dados do negócio ─────────
 
@@ -20,7 +21,7 @@ const businessSchema = z.object({
   ownerName: z.string().trim().min(2, "Informe o nome do responsável"),
   slug: z.string().trim().min(3, "O link precisa ter ao menos 3 caracteres").max(40),
   description: z.string().trim().max(600).optional().or(z.literal("")),
-  logoUrl: z.string().trim().url("URL do logo inválida").optional().or(z.literal("")),
+  logoUrl: z.string().trim().max(2000).optional().or(z.literal("")), // URL do nosso bucket (upload); validada em guardImageUrl
   phone: z.string().trim().optional().or(z.literal("")),
   address: z.string().trim().max(200).optional().or(z.literal("")),
   city: z.string().trim().max(80).optional().or(z.literal("")),
@@ -30,7 +31,7 @@ const businessSchema = z.object({
   cnpj: z.string().trim().max(20).optional().or(z.literal("")),
   email: z.string().trim().email("E-mail inválido").optional().or(z.literal("")),
   website: z.string().trim().url("URL do site inválida").optional().or(z.literal("")),
-  photoUrls: z.string().trim().max(2000).optional().or(z.literal("")), // uma URL por linha
+  photoUrls: z.string().trim().max(4000).optional().or(z.literal("")), // URLs do nosso bucket (upload), uma por linha
   openingHours: z.string().trim().max(200).optional().or(z.literal("")),
   extraInfo: z.string().trim().max(600).optional().or(z.literal("")),
   metaMensal: z.string().trim().max(20).optional().or(z.literal("")), // R$ do mês; vazio = sem meta
@@ -61,15 +62,19 @@ export async function updateBusinessAction(_prev: ActionResult, formData: FormDa
   }
   const cnpj = parseCnpj(d.cnpj ?? "");
   if (cnpj === false) return fail("CNPJ precisa ter 14 dígitos");
-  const photoUrls = (d.photoUrls ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean).slice(0, 12);
-  if (photoUrls.some((u) => !/^https?:\/\//i.test(u))) return fail("As fotos precisam ser URLs (http/https), uma por linha");
+  // Logo e fotos do espaço: só do nosso bucket (upload). Imagem externa já gravada (legado) é mantida até a troca.
+  const logo = guardImageUrl(tenant.id, d.logoUrl, tenant.logoUrl);
+  if (!logo.ok) return fail(IMAGE_REJECTED);
+  const photos = guardImageUrls(tenant.id, (d.photoUrls ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean).slice(0, 12), tenant.photoUrls);
+  if (!photos.ok) return fail(IMAGE_REJECTED);
+  const photoUrls = photos.urls;
 
   await db.$transaction([
     db.tenant.update({
       where: { id: tenant.id },
       data: {
         businessName: d.businessName, ownerName: d.ownerName, slug,
-        description: d.description || null, logoUrl: d.logoUrl || null,
+        description: d.description || null, logoUrl: logo.url,
         phone, address: d.address || null, city: d.city || null,
         legalName: d.legalName || null, cnpj, email: d.email || null, website: d.website || null,
         photoUrls, openingHours: d.openingHours || null, extraInfo: d.extraInfo || null,
@@ -81,6 +86,9 @@ export async function updateBusinessAction(_prev: ActionResult, formData: FormDa
     // Mantém o nome do profissional vinculado ao responsável em sincronia
     ...(user.professional ? [db.professional.update({ where: { id: user.professional.id }, data: { name: d.ownerName } })] : []),
   ]);
+  // Apaga do bucket o que saiu: logo trocado/removido e fotos do espaço removidas.
+  await discardReplaced(tenant.id, tenant.logoUrl, logo.url);
+  for (const old of tenant.photoUrls) if (!photoUrls.includes(old)) await discardReplaced(tenant.id, old, null);
   revalidatePath("/app", "layout");
   return success("Dados salvos!");
 }

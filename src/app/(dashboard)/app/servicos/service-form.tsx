@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createServiceAction, updateServiceAction } from "@/actions/services";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Alert } from "@/components/ui/alert";
+import { ImageField } from "@/components/ui/image-field";
 import type { ActionResult } from "@/lib/action-result";
 import { categoryExamples, categoryIcon, type CategoryRef } from "@/lib/services/categories";
 
@@ -180,10 +181,7 @@ export function ServiceForm({ initial, defaultAddOn, categories, roomOptions = n
         </fieldset>
       )}
 
-      <div>
-        <label className="label" htmlFor="imageUrl">URL da imagem (opcional)</label>
-        <input id="imageUrl" name="imageUrl" type="url" className="input" defaultValue={initial?.imageUrl ?? ""} placeholder="https://..." />
-      </div>
+      <ImageField name="imageUrl" kind="service" shape="wide" label="Imagem (opcional)" defaultValue={initial?.imageUrl} hint="Aparece na página pública ao lado do serviço." />
 
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" name="active" defaultChecked={initial?.active ?? true} className="h-4 w-4 rounded border-zinc-300" />

@@ -46,3 +46,6 @@ next-env.d.ts
 
 # Prisma generated client
 /src/generated
+
+# uploads locais (STORAGE_PROVIDER=local, só dev)
+/public/uploads

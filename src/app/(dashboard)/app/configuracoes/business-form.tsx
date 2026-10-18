@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { updateBusinessAction } from "@/actions/settings";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Alert } from "@/components/ui/alert";
+import { ImageField, ImageListField } from "@/components/ui/image-field";
 
 type Values = {
   businessName: string; ownerName: string; slug: string; description: string;
@@ -59,10 +60,7 @@ export function BusinessForm({ initial, base }: { initial: Values; base: string 
           <label className="label" htmlFor="phone">Telefone / WhatsApp</label>
           <input id="phone" name="phone" inputMode="tel" className="input" defaultValue={initial.phone} placeholder="(11) 99999-8888" />
         </div>
-        <div>
-          <label className="label" htmlFor="logoUrl">URL da foto / logotipo</label>
-          <input id="logoUrl" name="logoUrl" type="url" className="input" defaultValue={initial.logoUrl} placeholder="https://..." />
-        </div>
+        <ImageField name="logoUrl" kind="logo" shape="square" label="Logotipo" defaultValue={initial.logoUrl} hint="Aparece no topo da página de agendamento." />
       </div>
 
       <div>
@@ -101,10 +99,7 @@ export function BusinessForm({ initial, base }: { initial: Values; base: string 
         <p className="mt-1 text-xs text-zinc-500">Só informativo. Os horários que geram vagas são os de cada profissional, em Equipe.</p>
       </div>
 
-      <div>
-        <label className="label" htmlFor="photoUrls">Fotos do espaço <span className="font-normal text-zinc-400">(uma URL por linha, até 12)</span></label>
-        <textarea id="photoUrls" name="photoUrls" rows={3} className="input font-mono text-xs" defaultValue={initial.photoUrls} placeholder={"https://...\nhttps://..."} />
-      </div>
+      <ImageListField name="photoUrls" kind="space" max={12} label="Fotos do espaço (até 12)" defaultValue={initial.photoUrls ? initial.photoUrls.split("\n").filter(Boolean) : []} hint="Aparecem numa faixa na página de agendamento." />
 
       <div>
         <label className="label" htmlFor="extraInfo">Informações adicionais</label>

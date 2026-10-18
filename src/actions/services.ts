@@ -7,6 +7,7 @@ import { requireAuth } from "@/lib/auth/session";
 import { parseMoneyToCents } from "@/lib/money";
 import { fail, success, type ActionResult } from "@/lib/action-result";
 import { ownedCategoryId } from "@/lib/services/categories-db";
+import { discardReplaced, guardImageUrl, IMAGE_REJECTED } from "@/lib/storage/guard";
 
 const serviceSchema = z.object({
   name: z.string().trim().min(2, "Informe o nome do procedimento").max(80),
@@ -16,7 +17,7 @@ const serviceSchema = z.object({
   isAddOn: z.coerce.boolean().optional(),
   durationMinutes: z.coerce.number().int().min(5, "Duração mínima: 5 min").max(600),
   price: z.string().trim().min(1, "Informe o preço"),
-  imageUrl: z.string().trim().url("URL da imagem inválida").optional().or(z.literal("")),
+  imageUrl: z.string().trim().max(2000).optional().or(z.literal("")), // URL do nosso bucket (upload); validada em guardImageUrl
   active: z.coerce.boolean().optional(),
   // Sala e recursos (só com Tenant.salasAtivas): roomIds vazio = qualquer sala ativa; resources "id:qtd" por linha
   roomRequired: z.coerce.boolean().optional(),
@@ -65,6 +66,9 @@ export async function createServiceAction(_prev: ActionResult, formData: FormDat
   const r = parse(formData);
   if (!r.ok) return fail(r.error);
   r.data.categoryId = await ownedCategoryId(tenant.id, r.data.categoryId);
+  const img = guardImageUrl(tenant.id, r.data.imageUrl);
+  if (!img.ok) return fail(IMAGE_REJECTED);
+  r.data.imageUrl = img.url;
 
   const [last, professionals] = await Promise.all([
     db.service.findFirst({ where: { tenantId: tenant.id }, orderBy: { sortOrder: "desc" } }),
@@ -90,10 +94,17 @@ export async function updateServiceAction(id: string, _prev: ActionResult, formD
   const r = parse(formData);
   if (!r.ok) return fail(r.error);
   r.data.categoryId = await ownedCategoryId(tenant.id, r.data.categoryId);
+  // Imagem: só do nosso bucket; a URL externa que já estava gravada (legado) pode ser mantida até a troca.
+  const before = await db.service.findFirst({ where: { id, tenantId: tenant.id }, select: { imageUrl: true } });
+  if (!before) return fail("Procedimento não encontrado");
+  const img = guardImageUrl(tenant.id, r.data.imageUrl, before.imageUrl);
+  if (!img.ok) return fail(IMAGE_REJECTED);
+  r.data.imageUrl = img.url;
 
   // updateMany com tenantId: nunca atualiza serviço de outro tenant, mesmo com id forjado.
   const res = await db.service.updateMany({ where: { id, tenantId: tenant.id }, data: { ...r.data, active: r.data.active ?? false } });
   if (res.count === 0) return fail("Procedimento não encontrado");
+  await discardReplaced(tenant.id, before.imageUrl, r.data.imageUrl); // apaga do bucket a imagem trocada/removida
   const links = await ownedLinks(tenant.id, r.roomIds, r.resources);
   await db.$transaction([
     db.serviceRoom.deleteMany({ where: { serviceId: id } }),

@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { updateProfessionalAction } from "@/actions/professionals";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Alert } from "@/components/ui/alert";
+import { ImageField } from "@/components/ui/image-field";
 import type { ActionResult } from "@/lib/action-result";
 
 type Props = {
@@ -25,10 +26,7 @@ export function ProfileForm({ id, canManage, initial, services }: Props) {
           <label className="label" htmlFor="name">Nome</label>
           <input id="name" name="name" required className="input" defaultValue={initial.name} />
         </div>
-        <div>
-          <label className="label" htmlFor="photoUrl">URL da foto</label>
-          <input id="photoUrl" name="photoUrl" type="url" className="input" defaultValue={initial.photoUrl} placeholder="https://..." />
-        </div>
+        <ImageField name="photoUrl" kind="professional" shape="circle" label="Foto" defaultValue={initial.photoUrl} hint="Aparece na página pública ao escolher o profissional." />
       </div>
       <div>
         <label className="label" htmlFor="bio">Descrição curta</label>

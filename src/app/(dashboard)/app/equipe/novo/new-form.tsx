@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createProfessionalAction } from "@/actions/professionals";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Alert } from "@/components/ui/alert";
+import { ImageField } from "@/components/ui/image-field";
 
 export function NewProfessionalForm() {
   const router = useRouter();
@@ -22,10 +23,7 @@ export function NewProfessionalForm() {
         <label className="label" htmlFor="bio">Descrição curta (opcional)</label>
         <input id="bio" name="bio" className="input" placeholder="Especialista em alongamento em fibra e nail art" />
       </div>
-      <div>
-        <label className="label" htmlFor="photoUrl">URL da foto (opcional)</label>
-        <input id="photoUrl" name="photoUrl" type="url" className="input" placeholder="https://..." />
-      </div>
+      <ImageField name="photoUrl" kind="professional" shape="circle" label="Foto (opcional)" hint="Aparece na página pública ao escolher o profissional." />
       <div className="flex gap-2 pt-2">
         <SubmitButton pendingText="Criando...">Criar profissional</SubmitButton>
         <button type="button" className="btn-secondary" onClick={() => router.back()}>Cancelar</button>
