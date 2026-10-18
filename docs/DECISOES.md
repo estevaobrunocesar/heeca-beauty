@@ -91,3 +91,11 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 **Descartado.** (1) Importar as tabelas do Skin como estavam (`TreatmentPlan` paralelo ao `ClientPackage`): dois saldos para a mesma cliente. (2) Pré-criar as N sessões do plano: o saldo continua sendo calculado, nunca gravado. (3) Excluir protocolo em uso: um pacote cujo protocolo some viraria "vale tudo" — em uso só desativa. (4) Migrar dados do app antigo do Skin: não havia cliente real (confirmado em 20/09).
 
 **Consequência.** Mudar as etapas de um protocolo vale para os planos em andamento (o que "cabe" segue o protocolo atual); sessões, validade e preço contratados são snapshot. Ficam fora, como no Skin: cobrança automática de parcelas, envio automático de retorno por template, comissão específica por protocolo.
+
+## 2026-10-18 — WhatsApp do estabelecimento: número próprio pelo Notify, e o "mesmo número do app" (coexistência)
+
+**Contexto.** A confirmação de agendamento precisa sair pelo número do estabelecimento, não pelo compartilhado. O Notify já tem o canal por tenant (D11: `TenantChannel` + Embedded Signup hospedado no portal, `/conta/whatsapp`) e o provider `notify` do Beauty já envia `tenantId`.
+
+**Decisão.** O Beauty não conecta nada: consulta `GET /api/v1/channel?tenantId=` (`lib/whatsapp/channel.ts`) e a aba Configurações → WhatsApp mostra o número próprio ou "usando o número da Heeca", com o botão para o portal e a orientação de qual número usar. Quem conecta e guarda o token é o portal/Notify (o token do negócio nunca passa por aqui).
+
+**Em aberto (Heeca_Plataform / Meta).** (1) C9/D10 bloqueiam o Embedded Signup para clientes. (2) Usar o **mesmo número** do WhatsApp Business do celular exige o modo *coexistência* da Meta: ligar no Embedded Signup do app Heeca, confirmar se o Brasil é país suportado (a pesquisa só trouxe páginas de fornecedores) e ajustar `heeca_notify/src/lib/meta-onboarding.ts`, que hoje chama `registerPhone` (número já registrado no app) e não trata a sincronização de histórico (janela de ~24 h). Limites citados: 20 msg/s, sem edição/temporárias/ver-uma-vez/listas de transmissão no app, sem selo azul. Até lá o texto da tela não promete coexistência: manda falar com a equipe antes de conectar número que já tem conversas.

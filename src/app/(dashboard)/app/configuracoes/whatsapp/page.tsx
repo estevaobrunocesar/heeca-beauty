@@ -160,6 +160,16 @@ function SalonNumber({ canal, nome }: { canal: TenantChannelState; nome: string 
           {"error" in canal && <p className="mt-1 text-xs text-rose-600">{canal.error}</p>}
           <a href={conectar} className="btn-primary mt-4 inline-flex">Conectar o WhatsApp do seu negócio</a>
           <p className="mt-2 text-xs text-zinc-500">A conexão é feita uma vez, na sua conta Heeca, com o login da Meta. Vale para todos os seus estabelecimentos e produtos Heeca.</p>
+          <details className="mt-4 rounded-xl border border-zinc-200 p-4 text-sm text-zinc-600">
+            <summary className="cursor-pointer font-medium text-zinc-800">Qual número usar? Leia antes de conectar</summary>
+            <ul className="mt-3 list-disc space-y-2 pl-5">
+              <li><strong>Mais simples:</strong> um número só para o sistema (um chip novo). Você segue usando o número atual no celular, do jeito que já usa.</li>
+              <li><strong>O mesmo número que você já usa:</strong> precisa ser do app <strong>WhatsApp Business</strong> (o verde com um &ldquo;B&rdquo;). Em número do WhatsApp comum, a Meta pede para migrá-lo e ele deixa de funcionar no app.</li>
+              <li>Antes de conectar um número que já tem conversas, fale com a equipe Heeca para combinarmos o jeito que não faz você perder o histórico nem parar de atender.</li>
+              <li>Tenha o celular do número por perto: a Meta confirma por código por SMS ou ligação.</li>
+              <li>Os textos das mensagens viram modelos que a Meta precisa aprovar (de minutos a 1 dia). Até lá, as mensagens seguem pelo número da Heeca.</li>
+            </ul>
+          </details>
         </>
       )}
     </section>
