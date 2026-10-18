@@ -144,7 +144,7 @@ export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmat
       <Steps current={step} />
 
       {step === 1 && (
-        <div className="space-y-6 pb-24">
+        <div className="space-y-6">
           <div>
             <h2 className="font-display text-2xl font-semibold text-brand-950">O que você quer fazer?</h2>
             <p className="mt-1 text-xs text-zinc-500">Escolha um ou mais serviços — dá para fazer tudo na mesma visita.</p>
@@ -194,7 +194,7 @@ export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmat
           ))}
 
           {/* Barra fixa com o total da visita */}
-          <div className="fixed inset-x-0 bottom-0 z-10 border-t border-zinc-200 bg-white/95 p-3 backdrop-blur">
+          <div className="sticky bottom-0 z-10 -mx-5 border-t border-zinc-200 bg-white/95 p-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border">
             <div className="mx-auto flex max-w-md items-center gap-3">
               <div className="min-w-0 flex-1 text-sm">
                 {items.length === 0 ? (

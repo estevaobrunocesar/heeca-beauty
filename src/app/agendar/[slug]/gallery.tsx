@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 type Item = { id: string; imageUrl: string; title: string; description: string | null; category: string | null };
 
 /** Galeria horizontal (rolagem lateral no celular) com visualização em tela cheia ao tocar. */
-export function Gallery({ items }: { items: Item[] }) {
+export function Gallery({ items, grid = false }: { items: Item[]; grid?: boolean }) {
   const [open, setOpen] = useState<number | null>(null);
 
   useEffect(() => {
@@ -21,13 +21,13 @@ export function Gallery({ items }: { items: Item[] }) {
 
   return (
     <>
-      <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className={grid ? "columns-2 gap-3 sm:columns-3" : "flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"}>
         {items.map((it, i) => (
           <button
             key={it.id}
             type="button"
             onClick={() => setOpen(i)}
-            className="group relative aspect-[4/5] w-36 shrink-0 snap-start overflow-hidden rounded-2xl bg-brand-100 shadow-sm ring-1 ring-black/5"
+            className={`group relative overflow-hidden rounded-2xl bg-brand-100 shadow-sm ring-1 ring-black/5 ${grid ? `mb-3 block w-full break-inside-avoid ${i % 3 === 0 ? "aspect-[4/5]" : i % 3 === 1 ? "aspect-square" : "aspect-[3/4]"}` : "aspect-[4/5] w-36 shrink-0 snap-start"}`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={it.imageUrl} alt={it.title} loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
