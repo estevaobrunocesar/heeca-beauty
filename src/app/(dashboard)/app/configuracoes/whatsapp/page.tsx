@@ -5,13 +5,17 @@ import { getWhatsappDiagnostics, type TemplateCheck } from "@/lib/whatsapp/diagn
 import { TemplatesForm } from "./templates-form";
 import { Alert } from "@/components/ui/alert";
 import { fmtDateTime } from "@/lib/dates";
+import { getTenantChannel, type TenantChannelState } from "@/lib/whatsapp/channel";
+import { portalUrl } from "@/lib/heeca/service";
+import { formatPhone } from "@/lib/phone";
 
 export default async function WhatsappSettingsPage() {
   const { tenant } = await requireAuth();
-  const [overrides, recent, diag] = await Promise.all([
+  const [overrides, recent, diag, canal] = await Promise.all([
     db.messageTemplate.findMany({ where: { tenantId: tenant.id } }),
     db.whatsappMessage.findMany({ where: { tenantId: tenant.id }, orderBy: { createdAt: "desc" }, take: 15, include: { client: true } }),
     getWhatsappDiagnostics(),
+    getTenantChannel(tenant.id),
   ]);
 
   const kinds = Object.keys(DEFAULT_TEMPLATES) as (keyof typeof DEFAULT_TEMPLATES)[];
@@ -23,7 +27,8 @@ export default async function WhatsappSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <ConnectionStatus diag={diag} />
+      <SalonNumber canal={canal} nome={tenant.businessName} />
+      {canal.via === "outro" && <ConnectionStatus diag={diag} />}
 
       {diag.useTemplates ? (
         <Alert kind="info">
@@ -124,6 +129,39 @@ function ConnectionStatus({ diag }: { diag: Awaited<ReturnType<typeof getWhatsap
         <dt className="text-zinc-500">URL de callback</dt><dd><code className="break-all text-xs">{diag.webhookUrl}</code></dd>
         <dt className="text-zinc-500">Verify token</dt><dd><code className="text-xs">{diag.verifyToken ?? "(defina WHATSAPP_VERIFY_TOKEN)"}</code></dd>
       </dl>
+    </section>
+  );
+}
+
+/** Remetente das mensagens do estabelecimento: o número próprio (conectado no portal) ou, enquanto não conecta, o da plataforma. */
+function SalonNumber({ canal, nome }: { canal: TenantChannelState; nome: string }) {
+  if (canal.via === "outro") return null;
+  const conectar = `${portalUrl()}/conta/whatsapp`;
+  const proprio = "configured" in canal && canal.configured && canal.active;
+  return (
+    <section className="card p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-medium">WhatsApp do seu negócio</h2>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${proprio ? "bg-emerald-100 text-emerald-800" : "error" in canal ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800"}`}>
+          {proprio ? "Número próprio conectado" : "error" in canal ? "Sem resposta do Notify" : "Usando o número da Heeca"}
+        </span>
+      </div>
+      {proprio ? (
+        <p className="mt-2 text-sm text-zinc-600">
+          Confirmações, lembretes e avisos de <strong>{nome}</strong> saem pelo número <strong>{formatPhone((canal as { fromPhone: string }).fromPhone)}</strong>. A cliente vê o nome e o número do seu negócio.
+        </p>
+      ) : (
+        <>
+          <p className="mt-2 text-sm text-zinc-600">
+            {"error" in canal
+              ? "Não foi possível consultar o canal agora; as mensagens seguem a configuração da plataforma."
+              : "As mensagens estão saindo por um número compartilhado da Heeca. Conecte o WhatsApp Business do seu negócio para que a confirmação de cada agendamento chegue por ele."}
+          </p>
+          {"error" in canal && <p className="mt-1 text-xs text-rose-600">{canal.error}</p>}
+          <a href={conectar} className="btn-primary mt-4 inline-flex">Conectar o WhatsApp do seu negócio</a>
+          <p className="mt-2 text-xs text-zinc-500">A conexão é feita uma vez, na sua conta Heeca, com o login da Meta. Vale para todos os seus estabelecimentos e produtos Heeca.</p>
+        </>
+      )}
     </section>
   );
 }
