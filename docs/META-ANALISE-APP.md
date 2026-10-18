@@ -62,3 +62,60 @@ Observação: o Notify já cria modelos por API (`syncTemplates`, em `heeca_noti
 - Acompanhe em "Análise do app" / Caixa de Entrada de alertas. O prazo da Meta varia; costuma levar dias.
 - Aprovado: ligar o app (Publicar → modo Ativo), colocar `META_APP_ID` e `META_EMBEDDED_SIGNUP_CONFIG_ID` no portal e `META_APP_SECRET` no cofre do Notify (feito pelo Heeca_Plataform) e testar a conexão de um número real, inclusive com o tipo "Integração do app WhatsApp Business" (coexistência).
 - Pendências de código no portal e no Notify estão na mensagem enviada ao Heeca_Plataform em 18/10/2026 (versão v4 do Embedded Signup, evento `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`, não registrar número na coexistência, sincronização em 24 h).
+
+---
+
+# Vídeo 2 — passo a passo executável (conta de teste da Meta)
+
+Dados da conta de teste (não são segredo): número `+1 (555) 182-2230` · ID do número `1294240553777237` · ID da conta de mensagens (WABA) `1768015251201767` · API `v25.0`.
+
+## Parte A — chamadas de API de teste (faça com 24 h de antecedência; não precisa gravar tudo)
+
+1. Gere um token novo em Casos de uso → Etapa 1 → "Gerar novo token" (o anterior apareceu em gravação).
+2. **Antes de gravar qualquer coisa**, abra o PowerShell e guarde o token numa variável, sem mostrar em vídeo, e limpe a tela:
+
+```powershell
+$env:META_TOKEN = "COLE_O_TOKEN_AQUI"; Clear-Host
+$WABA = "1768015251201767"; $PHONE = "1294240553777237"; $V = "v25.0"
+```
+
+3. Rode as chamadas (cada uma aparece como "ligação de teste" para a Meta; leva até 24 h para constar no formulário de envio). Em vídeo, o token não aparece, pois está na variável de ambiente:
+
+```powershell
+# a) número de telefone da conta
+curl.exe -s -H "Authorization: Bearer $env:META_TOKEN" "https://graph.facebook.com/$V/$WABA/phone_numbers" | ConvertFrom-Json | ConvertTo-Json -Depth 6
+
+# b) modelos de mensagem da conta
+curl.exe -s -H "Authorization: Bearer $env:META_TOKEN" "https://graph.facebook.com/$V/$WABA/message_templates?fields=name,status,language,category" | ConvertFrom-Json | ConvertTo-Json -Depth 6
+
+# c) apps inscritos na conta (webhooks)
+curl.exe -s -H "Authorization: Bearer $env:META_TOKEN" "https://graph.facebook.com/$V/$WABA/subscribed_apps" | ConvertFrom-Json | ConvertTo-Json -Depth 6
+
+# d) dados do número
+curl.exe -s -H "Authorization: Bearer $env:META_TOKEN" "https://graph.facebook.com/$V/$PHONE?fields=display_phone_number,verified_name,quality_rating,platform_type" | ConvertFrom-Json | ConvertTo-Json -Depth 6
+```
+
+Se alguma devolver `error`, anote a mensagem (token expirado, permissão ausente) e me mande, sem colar o token.
+
+## Parte B — criar o modelo no WhatsApp Manager (este é o trecho que vai gravado)
+
+Use o modelo real da Heeca `heeca_lembrete` (texto de produção do Notify, em `heeca_notify/src/lib/templates.ts`):
+
+- Conta: a conta de teste `1768015251201767`
+- Categoria: **Utilidade**
+- Idioma: **Português (BR)**
+- Nome: `heeca_lembrete`
+- Corpo: `Mensagem de {{2}}: Oi, {{1}}! Lembrete do seu horário de {{3}}, {{4}} às {{5}}. Se precisar mudar, use os botões abaixo.`
+- Exemplos das variáveis, na ordem 1 a 5: `Maria`, `Studio Ana`, `Alongamento em gel`, `amanhã`, `14:00`
+- Botões de resposta rápida: `Remarcar` e `Cancelar`
+
+Caminho: WhatsApp Manager → Modelos de mensagem → Criar modelo (link direto: `https://business.facebook.com/latest/whatsapp_manager/message_templates?asset_id=1768015251201767`, ajuste o `business_id` se a Meta pedir).
+
+Gravação (1 a 2 min), na ordem:
+1. Mostre o WhatsApp Manager na conta de teste, lista de modelos.
+2. Clique em **Criar modelo** e narre: "This is how Heeca creates a message template for appointment reminders."
+3. Escolha categoria, idioma e nome; preencha o corpo e os exemplos; adicione os dois botões.
+4. Clique em **Enviar** e mostre a confirmação e o modelo na lista com status "Em análise".
+5. Pare a gravação.
+
+Segurança: aqui não há token; confira só que nenhuma outra janela ou aba com dados pessoais fique no quadro.
