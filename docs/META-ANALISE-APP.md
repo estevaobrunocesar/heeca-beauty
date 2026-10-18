@@ -109,13 +109,27 @@ Use o modelo real da Heeca `heeca_lembrete` (texto de produção do Notify, em `
 - Exemplos das variáveis, na ordem 1 a 5: `Maria`, `Studio Ana`, `Alongamento em gel`, `amanhã`, `14:00`
 - Botões de resposta rápida: `Remarcar` e `Cancelar`
 
-Caminho: WhatsApp Manager → Modelos de mensagem → Criar modelo (link direto: `https://business.facebook.com/latest/whatsapp_manager/message_templates?asset_id=1768015251201767`, ajuste o `business_id` se a Meta pedir).
+Caminho: WhatsApp Manager → Modelos de mensagem → Criar modelo (link direto, conferido em 18/10/2026: `https://business.facebook.com/latest/whatsapp_manager/message_templates?business_id=990562626776919&asset_id=1768015251201767`; abre a "Test WhatsApp Business Account").
+
+O assistente tem 3 passos: **Configurar modelo → Editar modelo → Enviar para análise** (conferido na tela em 18/10/2026, sem enviar nada).
+
+Antes de gravar:
+- Feche o aviso azul "Saiba mais sobre o Direct Send" (X) na lista de modelos.
+- Se a Meta mostrar o pop-up sobre nomes de usuário (BSUID), feche com o X. Não clique em "Saiba mais aqui" (leva à documentação).
 
 Gravação (1 a 2 min), na ordem:
 1. Mostre o WhatsApp Manager na conta de teste, lista de modelos.
 2. Clique em **Criar modelo** e narre: "This is how Heeca creates a message template for appointment reminders."
-3. Escolha categoria, idioma e nome; preencha o corpo e os exemplos; adicione os dois botões.
-4. Clique em **Enviar** e mostre a confirmação e o modelo na lista com status "Em análise".
-5. Pare a gravação.
+3. Passo 1, Configurar modelo: a categoria padrão é **Marketing**, então clique em **Utilidade**; deixe o tipo em "Padrão" e clique em **Avançar**.
+4. Passo 2, Editar modelo:
+   - Nome: `heeca_lembrete`.
+   - Idioma: o padrão é English; troque para **Português (BR)**.
+   - Tipo de variável: deixe "Número".
+   - Cabeçalho e rodapé: deixe em branco.
+   - Corpo: cole o texto do modelo; use **Adicionar variável** para cada `{{n}}` e preencha os exemplos (Maria, Studio Ana, Alongamento em gel, amanhã, 14:00).
+   - Botões: **Adicionar botão** (resposta rápida) para `Remarcar` e `Cancelar`.
+   - Período de validade: deixe o padrão (10 minutos).
+5. Clique em **Enviar para análise** (cria o modelo e leva alguns minutos para a Meta aprovar) e mostre a confirmação e o modelo na lista com status "Em análise".
+6. Pare a gravação.
 
 Segurança: aqui não há token; confira só que nenhuma outra janela ou aba com dados pessoais fique no quadro.
