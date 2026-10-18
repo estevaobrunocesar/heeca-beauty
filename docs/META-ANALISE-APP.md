@@ -92,7 +92,7 @@ curl.exe -s -H "Authorization: Bearer $env:META_TOKEN" "https://graph.facebook.c
 curl.exe -s -H "Authorization: Bearer $env:META_TOKEN" "https://graph.facebook.com/$V/$WABA/subscribed_apps" | ConvertFrom-Json | ConvertTo-Json -Depth 6
 
 # d) dados do número
-curl.exe -s -H "Authorization: Bearer $env:META_TOKEN" "https://graph.facebook.com/$V/$PHONE?fields=display_phone_number,verified_name,quality_rating,platform_type" | ConvertFrom-Json | ConvertTo-Json -Depth 6
+curl.exe -s -H "Authorization: Bearer $env:META_TOKEN" "https://graph.facebook.com/$V/${PHONE}?fields=display_phone_number,verified_name,quality_rating,platform_type" | ConvertFrom-Json | ConvertTo-Json -Depth 6
 ```
 
 Se alguma devolver `error`, anote a mensagem (token expirado, permissão ausente) e me mande, sem colar o token.
