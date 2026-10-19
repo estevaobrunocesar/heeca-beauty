@@ -133,3 +133,22 @@ Gravação (1 a 2 min), na ordem:
 6. Pare a gravação.
 
 Segurança: aqui não há token; confira só que nenhuma outra janela ou aba com dados pessoais fique no quadro.
+
+---
+
+# Registro do envio (19/10/2026)
+
+- **Enviado em:** 19/10/2026, pelo Bruno, a partir do rascunho `1103436372297159` (app Heeca Plataforma `1102512862389510`, portfólio Heeca Sistemas `990562626776919`).
+- **Permissões pedidas:** `whatsapp_business_messaging` e `whatsapp_business_management` (acesso avançado, Provedor de Tecnologia).
+- **Status na Meta:** "Análise em andamento". Prazo informado pela Meta: a maioria é analisada **em até 20 dias**, e pode demorar mais se pedirem informações.
+- **Anexos:** vídeo 1 (envio da mensagem, com desfoque) na permissão de mensagens; vídeo 2 (criação do modelo `heeca_lembrete_v2`, comprimido) na permissão de gestão. As descrições de uso e do negócio foram escritas em inglês (textos neste documento) e salvas antes do envio; a sugestão de IA da Meta não foi usada.
+- **Onde acompanhar:** Painel do app → Análise do app (`/app-review/submissions/`), a Caixa de Entrada de alertas do app e o e-mail `contato@heeca.com.br`.
+- **O app segue "Não publicado"** até a aprovação: só administradores e quem tem função no app conectam número.
+
+## Depois da aprovação
+
+1. Publicar o app (modo Ativo) e conferir se o Embedded Signup aceita um número de cliente real.
+2. Heeca_Plataforma: `META_APP_ID` (`1102512862389510`) e `META_EMBEDDED_SIGNUP_CONFIG_ID` (`1415418407445912`) no portal, e `META_APP_SECRET` no cofre do Notify.
+3. Código que **não depende da aprovação** e pode ser feito antes (mensagem enviada ao Heeca_Plataforma em 18/10/2026): Embedded Signup v4 no portal (SDK `v26.0`, extras `{"version":"v4"}`), opção de coexistência (`featureType: whatsapp_business_app_onboarding`) com o evento `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`, e no Notify pular o registro do número na coexistência, sincronizar contatos e histórico em até 24 h e tratar `PARTNER_REMOVED`.
+4. Testar de ponta a ponta com um número de teste: conectar, confirmar um agendamento e ver o remetente no Notify.
+5. Se a Meta pedir ajustes: reabrir a análise, corrigir o ponto indicado (vídeo, descrição ou dados) e reenviar.
