@@ -2,14 +2,10 @@
 // para o processamento poder ser testado com a lib real em tests/images.test.ts.
 import sharp from "sharp";
 
-export type ImageKind = "logo" | "professional" | "service" | "portfolio" | "space";
+import { MAX_SIDE, type ImageKind } from "./image-spec";
 
-export const IMAGE_KINDS: ImageKind[] = ["logo", "professional", "service", "portfolio", "space"];
-
-/** Lado maior, em px, por tipo: avatar/logo pequenos; serviço médio; fotos de trabalho e do espaço maiores. */
-const MAX_SIDE: Record<ImageKind, number> = { logo: 512, professional: 512, service: 1200, portfolio: 1600, space: 1600 };
-export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
-export const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif", "image/avif"];
+// A especificação (formatos, limite, lado maior) vive em image-spec.ts, que o navegador também importa.
+export { ACCEPTED_TYPES, IMAGE_KINDS, MAX_UPLOAD_BYTES, type ImageKind } from "./image-spec";
 
 /**
  * Valida e normaliza a imagem: corrige a orientação (EXIF), limita o lado maior e converte para

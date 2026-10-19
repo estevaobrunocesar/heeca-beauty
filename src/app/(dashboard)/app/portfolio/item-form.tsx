@@ -26,7 +26,7 @@ export function PortfolioItemForm({ initial, categories }: { initial?: Portfolio
     <form action={formAction} className="card max-w-2xl p-6">
       <div className="space-y-4">
         {state && !state.ok && <Alert>{state.error}</Alert>}
-        <ImageField name="imageUrl" kind="portfolio" shape="wide" required label="Foto do trabalho" defaultValue={initial?.imageUrl} hint="JPG, PNG, WebP ou HEIC, até 8 MB. A foto é ajustada e guardada no seu espaço no Heeca." />
+        <ImageField name="imageUrl" kind="portfolio" shape="wide" required label="Foto do trabalho" defaultValue={initial?.imageUrl} hint="Aparece na galeria de trabalhos da página pública." />
         <div className="grid gap-4 sm:grid-cols-[1fr_200px]">
           <div>
             <label className="label" htmlFor="title">Nome do trabalho</label>

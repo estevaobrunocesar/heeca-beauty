@@ -1,18 +1,22 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { checkImageFile, imageSpecText, type ImageKind } from "@/lib/image-spec";
 
-type Kind = "logo" | "professional" | "service" | "portfolio" | "space";
+type Kind = ImageKind;
 
 /** Envia o arquivo para /api/uploads e devolve a URL do bucket do produto. Nunca recebe URL do usuário. */
 async function sendFile(file: File, kind: Kind): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  // Formato e tamanho são conferidos aqui para a resposta ser imediata; a rota confere de novo.
+  const invalid = checkImageFile(file);
+  if (invalid) return { ok: false, error: invalid };
   try {
     const fd = new FormData();
     fd.set("file", file);
     fd.set("kind", kind);
     const r = await fetch("/api/uploads", { method: "POST", body: fd });
     const j = (await r.json().catch(() => null)) as { ok?: boolean; url?: string; error?: string } | null;
-    if (!j?.ok || !j.url) return { ok: false, error: j?.error ?? "Falha no envio." };
+    if (!j?.ok || !j.url) return { ok: false, error: j?.error ?? `Falha no envio (erro ${r.status}). Tente de novo; se continuar, avise o suporte da Heeca.` };
     return { ok: true, url: j.url };
   } catch {
     return { ok: false, error: "Falha de conexão. Tente novamente." };
@@ -74,6 +78,7 @@ export function ImageField({ name, kind, defaultValue, label, hint, shape = "squ
           </div>
           {error && <p role="alert" className="text-xs text-rose-600">{error}</p>}
           {hint && !error && <p className="text-xs text-zinc-500">{hint}</p>}
+          <p className="text-xs text-zinc-400">{imageSpecText(kind)}</p>
         </div>
       </div>
     </div>
@@ -135,6 +140,7 @@ export function ImageListField({ name, kind, defaultValue = [], label, hint, max
       </div>
       {error && <p role="alert" className="mt-1 text-xs text-rose-600">{error}</p>}
       {hint && !error && <p className="mt-1 text-xs text-zinc-500">{hint}</p>}
+      <p className="mt-1 text-xs text-zinc-400">{imageSpecText(kind)}</p>
     </div>
   );
 }

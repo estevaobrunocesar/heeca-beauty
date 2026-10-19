@@ -5,7 +5,8 @@ import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
 import { getSession, requireAuth, type AuthContext } from "@/lib/auth/session";
 import { getStorage } from "@/lib/storage";
-import { ACCEPTED_TYPES, IMAGE_KINDS, MAX_UPLOAD_BYTES, processImage, type ImageKind } from "@/lib/images";
+import { processImage } from "@/lib/images";
+import { ACCEPTED_LABEL, ACCEPTED_TYPES, IMAGE_KINDS, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, SVG_REFUSED, type ImageKind } from "@/lib/image-spec";
 
 /**
  * Quem pode enviar cada tipo (SPEC §6): a foto do profissional também é do próprio profissional
@@ -42,17 +43,35 @@ export async function POST(req: Request) {
   if (!(file instanceof File) || !IMAGE_KINDS.includes(kind)) return NextResponse.json({ ok: false, error: "Envie uma imagem." }, { status: 400 });
   if (!canUpload(ctx, kind)) return NextResponse.json({ ok: false, error: "Você não tem permissão para enviar este tipo de imagem." }, { status: 403 });
   if (limited(ctx.user.id)) return NextResponse.json({ ok: false, error: "Muitos envios em pouco tempo. Aguarde um pouco." }, { status: 429 });
-  if (file.size > MAX_UPLOAD_BYTES) return NextResponse.json({ ok: false, error: "Imagem muito grande (máximo 8 MB)." }, { status: 413 });
-  if (file.type && !ACCEPTED_TYPES.includes(file.type)) return NextResponse.json({ ok: false, error: "Formato não suportado. Use JPG, PNG, WebP ou HEIC." }, { status: 415 });
+  if (file.size > MAX_UPLOAD_BYTES) return NextResponse.json({ ok: false, error: `Imagem muito grande (máximo ${MAX_UPLOAD_LABEL}).` }, { status: 413 });
+  if (file.type === "image/svg+xml") return NextResponse.json({ ok: false, error: SVG_REFUSED }, { status: 415 });
+  if (file.type && !ACCEPTED_TYPES.includes(file.type)) return NextResponse.json({ ok: false, error: `Formato não suportado. Use ${ACCEPTED_LABEL}.` }, { status: 415 });
+
+  // O storage é verificado ANTES de processar: se o ambiente não o tem configurado, o motivo é do servidor,
+  // e a mensagem não pode culpar o arquivo (era o erro "tente outro arquivo" que a pessoa via em produção).
+  let storage;
+  try {
+    storage = getStorage();
+  } catch (err) {
+    console.error("[uploads] storage não configurado", err);
+    return NextResponse.json({ ok: false, code: "storage_not_configured", error: "O envio de imagens ainda não está configurado neste ambiente. O problema não é a sua imagem: avise o suporte da Heeca." }, { status: 503 });
+  }
+
+  let processed;
+  try {
+    processed = await processImage(Buffer.from(await file.arrayBuffer()), kind);
+  } catch (err) {
+    console.error("[uploads] imagem ilegível", { kind, tenantId: ctx.tenant.id, size: file.size, type: file.type }, err);
+    return NextResponse.json({ ok: false, error: `Não foi possível ler esta imagem. Tente outro arquivo (${ACCEPTED_LABEL}).` }, { status: 422 });
+  }
 
   try {
-    const processed = await processImage(Buffer.from(await file.arrayBuffer()), kind);
     const key = `${ctx.tenant.id}/${kind}/${nanoid(16)}.webp`;
-    const url = await getStorage().put(key, processed.data, processed.contentType);
+    const url = await storage.put(key, processed.data, processed.contentType);
     return NextResponse.json({ ok: true, url, width: processed.width, height: processed.height });
   } catch (err) {
-    console.error("[uploads]", { kind, tenantId: ctx.tenant.id, size: file.size, type: file.type }, err);
-    return NextResponse.json({ ok: false, error: "Não foi possível processar a imagem. Tente outro arquivo." }, { status: 422 });
+    console.error("[uploads] falha ao guardar", { kind, tenantId: ctx.tenant.id, size: file.size }, err);
+    return NextResponse.json({ ok: false, code: "storage_failed", error: "Não foi possível guardar a imagem agora. Tente de novo em instantes; se continuar, avise o suporte da Heeca." }, { status: 502 });
   }
 }
 
