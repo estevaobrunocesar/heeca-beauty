@@ -7,8 +7,7 @@ import { formatCents } from "@/lib/money";
 import { computeDepositCents } from "@/lib/payments/deposit";
 import { policyItems, hasPolicies } from "@/lib/policies";
 import { BookingWizard } from "./booking-wizard";
-import { marcaDoTenant, mesmaMarcaDoHost } from "@/lib/marca-atual";
-import { paleta } from "@/lib/marca";
+import { marcaDoTenant, mesmaMarcaDoHost, paletaDoTenant } from "@/lib/marca-atual";
 import { HEECA_PRODUCTS, HeecaAppIcon, type HeecaProduct } from "@/components/brand/logo";
 import { Gallery } from "./gallery";
 import { groupByCategory, UNCATEGORIZED_LABEL } from "@/lib/services/categories";
@@ -85,7 +84,7 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
   const urlSite = tenant.website?.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
 
   return (
-    <div className="min-h-full bg-white text-brand-950" style={paleta(marca) as React.CSSProperties}>
+    <div className="min-h-full bg-white text-brand-950" style={paletaDoTenant(tenant) as React.CSSProperties}>
       {/* Barra fixa: identidade + chamada para agendar */}
       <div className="sticky top-0 z-30 border-b border-white/10 bg-brand-950/85 text-white backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-5 py-2.5">

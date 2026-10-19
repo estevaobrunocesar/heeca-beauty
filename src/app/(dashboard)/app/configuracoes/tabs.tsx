@@ -8,6 +8,7 @@ const tabs = [
   { href: "/app/configuracoes/segmentos", label: "Segmentos" },
   { href: "/app/configuracoes/horarios", label: "Horários e regras" },
   { href: "/app/configuracoes/politicas", label: "Políticas" },
+  { href: "/app/configuracoes/aparencia", label: "Aparência" },
   { href: "/app/configuracoes/whatsapp", label: "WhatsApp" },
   { href: "/app/configuracoes/pagamentos", label: "Pagamentos" },
 ];

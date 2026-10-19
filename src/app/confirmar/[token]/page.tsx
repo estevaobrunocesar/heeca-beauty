@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { policyItems } from "@/lib/policies";
 import { describeProfessionals, describeVisit } from "@/lib/appointments/summary";
 import { ConfirmButtons } from "./confirm-buttons";
+import { paletaDoTenant } from "@/lib/marca-atual";
 
 export const metadata: Metadata = { title: "Confirmar agendamento" };
 
@@ -39,7 +40,7 @@ export default async function ConfirmPage({ params, searchParams }: PageProps<"/
   const policies = policyItems(appt.tenant);
 
   return (
-    <Shell>
+    <Shell tenant={appt.tenant}>
       <p className="text-sm text-zinc-500">{appt.tenant.businessName}</p>
       <h1 className="mt-1 text-xl font-semibold">{describeVisit(appt.items)}</h1>
       <div className="mt-4 space-y-1 rounded-xl bg-zinc-50 p-4 text-sm">
@@ -93,9 +94,9 @@ export default async function ConfirmPage({ params, searchParams }: PageProps<"/
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, tenant }: { children: React.ReactNode; tenant?: { marca: string; pageColor: string | null } }) {
   return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-100 px-4 py-10">
+    <main className="flex flex-1 items-center justify-center bg-zinc-100 px-4 py-10" style={tenant ? (paletaDoTenant(tenant) as React.CSSProperties) : undefined}>
       <div className="card w-full max-w-md p-6">{children}</div>
     </main>
   );

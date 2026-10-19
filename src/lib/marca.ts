@@ -15,6 +15,8 @@
  * segmentos. Puro (sem server-only): também é importado por client components.
  */
 
+import { paletaDeCor } from "./cor-pagina";
+
 export type CategoriaSugerida = { slug: string; nome: string; icone: string; exemplos: string[] };
 /** Campo da ficha técnica da cliente (e do registro de cada atendimento). Sugestões alimentam um datalist. */
 export type CampoFicha = { codigo: string; rotulo: string; sugestoes: string[]; placeholder?: string; segmento?: string; /** Mesmo campo em vários segmentos da marca: aparece uma vez, no primeiro segmento ativo que o declara. */ compartilhado?: boolean };
@@ -328,17 +330,10 @@ export const CATEGORIAS_CONHECIDAS: Record<string, CategoriaSugerida> = Object.f
 
 // ─── Paleta ────────────────────────────────────────────────────────────────────────────────────
 // Tailwind referencia --color-brand-50…950; derivamos todas da cor 600 da marca misturando com
-// branco (claras) e preto (escuras), para não manter 11 hexadecimais por marca à mão.
-const hex = (n: number) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, "0");
-function mistura(cor: string, alvo: [number, number, number], t: number) {
-  const r = parseInt(cor.slice(1, 3), 16), g = parseInt(cor.slice(3, 5), 16), b = parseInt(cor.slice(5, 7), 16);
-  return `#${hex(r + (alvo[0] - r) * t)}${hex(g + (alvo[1] - g) * t)}${hex(b + (alvo[2] - b) * t)}`;
-}
-const TONS: [number, number][] = [[50, 0.94], [100, 0.88], [200, 0.75], [300, 0.55], [400, 0.3], [500, 0.12], [600, 0], [700, 0.18], [800, 0.32], [900, 0.44], [950, 0.66]];
+// branco (claras) e preto (escuras), para não manter 11 hexadecimais por marca à mão. A conta é a
+// mesma que a página pública usa com a cor escolhida pelo estabelecimento (cor-pagina.ts).
 
 /** Variáveis CSS (--color-brand-*) para aplicar inline no <html> ou num wrapper. */
 export function paleta(marca: Marca): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [tom, t] of TONS) out[`--color-brand-${tom}`] = tom < 600 ? mistura(marca.cor, [255, 255, 255], t) : tom === 600 ? marca.cor : mistura(marca.cor, [0, 0, 0], t);
-  return out;
+  return paletaDeCor(marca.cor);
 }

@@ -99,3 +99,15 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 **Decisão.** O Beauty não conecta nada: consulta `GET /api/v1/channel?tenantId=` (`lib/whatsapp/channel.ts`) e a aba Configurações → WhatsApp mostra o número próprio ou "usando o número da Heeca", com o botão para o portal e a orientação de qual número usar. Quem conecta e guarda o token é o portal/Notify (o token do negócio nunca passa por aqui).
 
 **Em aberto (Heeca_Plataform / Meta).** (1) C9/D10 bloqueiam o Embedded Signup para clientes. (2) Usar o **mesmo número** do WhatsApp Business do celular exige o modo *coexistência* da Meta: ligar no Embedded Signup do app Heeca, confirmar se o Brasil é país suportado (a pesquisa só trouxe páginas de fornecedores) e ajustar `heeca_notify/src/lib/meta-onboarding.ts`, que hoje chama `registerPhone` (número já registrado no app) e não trata a sincronização de histórico (janela de ~24 h). Limites citados: 20 msg/s, sem edição/temporárias/ver-uma-vez/listas de transmissão no app, sem selo azul. Até lá o texto da tela não promete coexistência: manda falar com a equipe antes de conectar número que já tem conversas.
+
+## 2026-10-19 — Cor da página pública escolhida pelo estabelecimento
+
+**Contexto.** A landing `/agendar/<slug>` usava só a cor da família da marca (rosa `#c8306f`). O estabelecimento quer a página com a cor dele.
+
+**Decisão.** `Tenant.pageColor` (hex, null = cor da marca), escolhido em Configurações → **Aparência**: cores prontas, cor personalizada e prévia ao vivo. A cor é a base (tom 600) de toda a paleta, calculada pelo mesmo mecanismo de `paleta(marca)` (`lib/cor-pagina.ts`, `paletaDeCor`). Vale só para as páginas do cliente final (`/agendar`, `/confirmar`, `/pagar`) via `paletaDoTenant(tenant)`; o **painel segue a cor da família** (regra 3 do `CLAUDE.md`). Uma cor só, e não duas: os tons derivados já dão a variação.
+
+**Legibilidade.** O texto sobre botões e abertura é branco, então a cor precisa de contraste mínimo 4,5:1 (WCAG AA) com branco. Cor clara demais é **ajustada ao gravar** reduzindo a luminosidade em HSL (mantém matiz e saturação; misturar com preto deixava pastéis acinzentados) e a tela avisa o que foi gravado. Cor inválida é recusada; valor ruim vindo do banco cai na cor da marca sem quebrar a página.
+
+**Descartado.** (1) Cor também no painel: quebra o padrão Heeca e o contraste do menu. (2) Duas cores (principal e destaque): mais campos, mais combinações ilegíveis. (3) Recusar cor clara em vez de ajustar: a pessoa não sabe qual cor escolher no lugar.
+
+**Consequência.** Migração aditiva `20261019120000_tenant_page_color` (`ALTER TABLE ... ADD COLUMN`, sem DROP).

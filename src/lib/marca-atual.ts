@@ -1,4 +1,5 @@
 import "server-only";
+import { corDaPagina, paletaDeCor } from "./cor-pagina";
 import { headers } from "next/headers";
 import { MARCA_PADRAO, marcaDoHost, marcaPorSlug, segmentosDe, fichaDe, type Marca } from "@/lib/marca";
 
@@ -20,6 +21,9 @@ export function appUrlDe(marca: Marca | string): string {
 }
 
 export const marcaDoTenant = (tenant: { marca: string }): Marca => marcaPorSlug(tenant.marca ?? MARCA_PADRAO);
+
+/** Paleta da página do cliente final (agendar, confirmar, pagar): a cor escolhida pelo estabelecimento ou a da marca. */
+export const paletaDoTenant = (tenant: { marca: string; pageColor?: string | null }) => paletaDeCor(corDaPagina(tenant.pageColor, marcaDoTenant(tenant).cor));
 
 /** Marca, segmentos ativos e ficha do estabelecimento — o que quase toda página do painel precisa. */
 export function perfilDoTenant(tenant: { marca: string; segmentos: string[] }) {

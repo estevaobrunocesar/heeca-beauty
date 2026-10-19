@@ -5,6 +5,7 @@ import { fmtDate, fmtTime } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import { describeProfessionals } from "@/lib/appointments/summary";
 import { PixPayment } from "./pix-payment";
+import { paletaDoTenant } from "@/lib/marca-atual";
 
 export const metadata: Metadata = { title: "Pagar sinal" };
 
@@ -28,7 +29,7 @@ export default async function PayPage({ params }: PageProps<"/pagar/[token]">) {
   const p = appt.payment;
 
   return (
-    <Shell>
+    <Shell tenant={appt.tenant}>
       <p className="text-sm text-zinc-500">{appt.tenant.businessName}</p>
       <h1 className="mt-1 text-xl font-semibold">Sinal de {formatCents(p.amountCents)}</h1>
       <p className="mt-1 text-sm text-zinc-600">
@@ -57,9 +58,9 @@ export default async function PayPage({ params }: PageProps<"/pagar/[token]">) {
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, tenant }: { children: React.ReactNode; tenant?: { marca: string; pageColor: string | null } }) {
   return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-100 px-4 py-10">
+    <main className="flex flex-1 items-center justify-center bg-zinc-100 px-4 py-10" style={tenant ? (paletaDoTenant(tenant) as React.CSSProperties) : undefined}>
       <div className="card w-full max-w-md p-6">{children}</div>
     </main>
   );

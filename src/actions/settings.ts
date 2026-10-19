@@ -11,6 +11,7 @@ import { fail, success, type ActionResult } from "@/lib/action-result";
 import type { MessageKind } from "@/generated/prisma/enums";
 import { DEFAULT_TEMPLATES } from "@/lib/whatsapp/templates";
 import { marcaDoTenant } from "@/lib/marca-atual";
+import { ajustarCor, normalizarHex } from "@/lib/cor-pagina";
 import { garantirCategoriasDosSegmentos } from "@/lib/tenant-bootstrap";
 import { discardReplaced, guardImageUrl, guardImageUrls, IMAGE_REJECTED } from "@/lib/storage/guard";
 
@@ -214,4 +215,33 @@ export async function updateSegmentosAction(_prev: ActionResult, formData: FormD
   revalidatePath("/app/configuracoes/segmentos");
   revalidatePath("/app/servicos");
   return success(novas > 0 ? `Segmentos salvos! ${novas} categoria(s) de serviço criada(s) — confira em Serviços.` : "Segmentos salvos!");
+}
+
+// ───────── Cor da página pública ─────────
+
+const pageColorSchema = z.object({ pageColor: z.string().trim().max(20).optional().or(z.literal("")) });
+
+/**
+ * Cor-base da página de agendamento. Vazio = volta à cor da marca. Cor inválida é recusada; cor clara demais
+ * é escurecida (o texto branco do botão e da abertura precisa ser legível) e a mensagem diz o que foi gravado.
+ */
+export async function updatePageColorAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const ctx = await requireAuth();
+  if (!ctx.canManage) return fail("Apenas a responsável pode alterar a aparência da página.");
+  const parsed = pageColorSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail("Cor inválida.");
+  const bruto = parsed.data.pageColor ?? "";
+  if (!bruto) {
+    await db.tenant.update({ where: { id: ctx.tenant.id }, data: { pageColor: null } });
+    revalidatePath("/app/configuracoes/aparencia");
+    revalidatePath(`/agendar/${ctx.tenant.slug}`);
+    return success("Sua página voltou a usar a cor da marca.");
+  }
+  const hex = normalizarHex(bruto);
+  if (!hex) return fail("Cor inválida. Use o formato #RRGGBB, por exemplo #7a1f3d.");
+  const { cor, ajustada } = ajustarCor(hex);
+  await db.tenant.update({ where: { id: ctx.tenant.id }, data: { pageColor: cor } });
+  revalidatePath("/app/configuracoes/aparencia");
+  revalidatePath(`/agendar/${ctx.tenant.slug}`);
+  return success(ajustada ? `Cor salva como ${cor}: escurecemos um pouco a escolhida para o texto branco ficar legível.` : "Cor da página salva.");
 }
