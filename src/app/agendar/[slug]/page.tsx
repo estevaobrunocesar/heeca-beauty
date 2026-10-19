@@ -90,7 +90,7 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-5 py-2.5">
           {tenant.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={tenant.logoUrl} alt="" className="h-8 w-8 rounded-full object-cover ring-2 ring-white/20" />
+            <img src={tenant.logoUrl} alt={tenant.businessName} className="h-9 w-auto max-w-[10rem] object-contain" />
           ) : (
             <span className={`${serif.className} flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sm`}>{tenant.businessName.slice(0, 1).toUpperCase()}</span>
           )}
