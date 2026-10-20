@@ -31,3 +31,19 @@ export function whatsappLink(e164: string, text?: string) {
   const base = `https://wa.me/${e164.replace(/\D/g, "")}`;
   return text ? `${base}?text=${encodeURIComponent(text)}` : base;
 }
+
+/** Texto para telas: o telefone formatado, ou um aviso quando o estabelecimento dispensa o telefone. */
+export function phoneLabel(e164: string | null | undefined): string {
+  return e164 ? formatPhone(e164) : "Sem telefone";
+}
+
+/**
+ * Telefone informado pela cliente. Obrigatório quando o estabelecimento exige (padrão); quando dispensa,
+ * vazio vira null, mas um número preenchido continua precisando ser válido (nada de gravar lixo).
+ */
+export function parseClientPhone(raw: string | null | undefined, required: boolean): { ok: true; phone: string | null } | { ok: false; error: string } {
+  const text = (raw ?? "").trim();
+  if (!text) return required ? { ok: false, error: "Informe seu WhatsApp." } : { ok: true, phone: null };
+  const phone = normalizePhone(text);
+  return phone ? { ok: true, phone } : { ok: false, error: "Número de WhatsApp inválido." };
+}

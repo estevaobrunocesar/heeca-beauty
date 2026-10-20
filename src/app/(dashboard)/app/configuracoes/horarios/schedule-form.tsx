@@ -8,7 +8,7 @@ import { Alert } from "@/components/ui/alert";
 type Rules = {
   slotIntervalMinutes: number; bufferMinutes: number; minAdvanceMinutes: number; maxAdvanceDays: number;
   pendingExpiryMinutes: number; cancelDeadlineHours: number; reminderHoursBefore: number;
-  maxConcurrentAppointments: number; maxDailyAppointments: number | null; requireWhatsappConfirmation: boolean;
+  maxConcurrentAppointments: number; maxDailyAppointments: number | null; requireWhatsappConfirmation: boolean; requirePhone: boolean;
 };
 
 /** Regras de agendamento do estabelecimento (valem para toda a equipe). */
@@ -71,6 +71,13 @@ export function ScheduleForm({ rules }: { rules: Rules }) {
               <input type="checkbox" name="requireWhatsappConfirmation" defaultChecked={rules.requireWhatsappConfirmation} className="h-4 w-4 rounded border-zinc-300" />
               Exigir confirmação da cliente via WhatsApp
             </label>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="requirePhone" defaultChecked={rules.requirePhone} className="h-4 w-4 rounded border-zinc-300" />
+              Exigir o telefone da cliente ao agendar
+            </label>
+            <p className="mt-1 text-xs text-zinc-500">Desmarque para aceitar reservas sem telefone. Quem não informa o telefone não recebe confirmação nem lembrete por WhatsApp e a reserva já nasce confirmada; ela guarda um link para ver ou cancelar.</p>
           </div>
         </div>
       </section>

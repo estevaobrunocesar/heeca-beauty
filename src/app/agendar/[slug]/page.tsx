@@ -271,6 +271,7 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
                 addOns={addOns.map((s) => ({ id: s.id, name: s.name, description: s.description, clientNotes: s.clientNotes, durationMinutes: s.durationMinutes, priceCents: s.priceCents }))}
                 depositMode={tenant.depositMode}
                 depositValue={tenant.depositValue}
+                requirePhone={tenant.requirePhone}
               />
             )}
           </div>

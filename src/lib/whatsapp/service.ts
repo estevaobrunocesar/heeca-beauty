@@ -38,6 +38,8 @@ export async function sendAppointmentMessage(appointmentId: string, kind: Outbou
   if (!appt) return null;
 
   const { tenant, client } = appt;
+  // Cliente sem telefone (o estabelecimento dispensa): não há para onde mandar WhatsApp.
+  if (!client.phone) return { ok: false as const, error: "Cliente sem telefone." };
   const payment = await db.payment.findUnique({ where: { appointmentId: appt.id } });
   const tz = tenant.timezone;
 

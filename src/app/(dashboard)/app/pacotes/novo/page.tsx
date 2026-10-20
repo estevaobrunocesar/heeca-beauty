@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { activeProfessionals, requireAuth } from "@/lib/auth/session";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatCents } from "@/lib/money";
+import { phoneLabel } from "@/lib/phone";
 import { todayKey } from "@/lib/dates";
 import { moduloClinicoAtivo } from "@/lib/treatments/rules";
 import { SellForm } from "./sell-form";
@@ -42,7 +43,7 @@ export default async function VenderPacotePage({ searchParams }: PageProps<"/app
       <SellForm
         packages={pacotes.map((p) => ({ id: p.id, label: `${p.name} · ${p.sessionsCount} sessões · ${formatCents(p.priceCents)}${p.validityDays ? ` · ${p.validityDays} dias` : ""}`, price: (p.priceCents / 100).toFixed(2).replace(".", ",") }))}
         protocols={protocolos.map((p) => ({ id: p.id, label: `${p.name} · ${p.sessionsCount} sessões sugeridas`, sessions: p.sessionsCount }))}
-        clients={clientes.map((c) => ({ id: c.id, label: `${c.name} · ${c.phone}` }))}
+        clients={clientes.map((c) => ({ id: c.id, label: `${c.name} · ${phoneLabel(c.phone)}` }))}
         professionals={clinico ? activeProfessionals(ctx).map((p) => ({ id: p.id, name: p.name })) : []}
         defaultClientId={avaliacao?.clientId ?? (typeof sp.cliente === "string" ? sp.cliente : undefined)}
         defaultSource={preferido}

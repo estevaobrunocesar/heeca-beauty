@@ -14,15 +14,15 @@ export default async function NewAppointmentPage({ searchParams }: PageProps<"/a
       orderBy: { sortOrder: "asc" },
       include: { professionals: { select: { professionalId: true } } },
     }),
-    db.client.findMany({ where: { tenantId: tenant.id }, orderBy: { name: "asc" }, select: { name: true, phone: true } }),
+    db.client.findMany({ where: { tenantId: tenant.id }, orderBy: { name: "asc" }, select: { id: true, name: true, phone: true } }),
   ]);
-  const preselected = typeof sp.cliente === "string" ? clients.find((c) => c.phone === sp.cliente) ?? null : null;
+  const preselected = typeof sp.cliente === "string" ? clients.find((c) => c.id === sp.cliente || c.phone === sp.cliente) ?? null : null;
   const team = activeProfessionals(ctx);
   const defaultPro = (typeof sp.pro === "string" && team.find((p) => p.id === sp.pro)?.id) || ctx.professional.id;
 
   return (
     <>
-      <PageHeader title="Novo agendamento" description="Agendamentos criados aqui nascem confirmados e a cliente recebe a confirmação por WhatsApp." />
+      <PageHeader title="Novo agendamento" description="Agendamentos criados aqui nascem confirmados e a cliente recebe a confirmação por WhatsApp (quando há telefone)." />
       <ManualAppointmentForm
         slug={tenant.slug}
         todayKey={todayKey(tenant.timezone)}
@@ -32,6 +32,7 @@ export default async function NewAppointmentPage({ searchParams }: PageProps<"/a
         services={services.filter((s) => !s.isAddOn).map((s) => ({ id: s.id, name: s.name, durationMinutes: s.durationMinutes, priceCents: s.priceCents, professionalIds: s.professionals.map((p) => p.professionalId) }))}
         addOns={services.filter((s) => s.isAddOn).map((s) => ({ id: s.id, name: s.name, durationMinutes: s.durationMinutes, priceCents: s.priceCents }))}
         clients={clients}
+        requirePhone={tenant.requirePhone}
         preselected={preselected}
       />
     </>

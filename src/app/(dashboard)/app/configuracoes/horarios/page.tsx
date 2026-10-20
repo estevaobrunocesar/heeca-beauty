@@ -40,6 +40,7 @@ export default async function ScheduleSettingsPage() {
           maxConcurrentAppointments: tenant.maxConcurrentAppointments,
           maxDailyAppointments: tenant.maxDailyAppointments,
           requireWhatsappConfirmation: tenant.requireWhatsappConfirmation,
+          requirePhone: tenant.requirePhone,
         }}
       />
     </div>

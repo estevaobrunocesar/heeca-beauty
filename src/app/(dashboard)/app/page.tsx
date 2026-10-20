@@ -249,7 +249,7 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
                     <span className={`shrink-0 text-[11px] font-semibold ${p.stage === "approaching" ? "text-emerald-600" : p.stage === "inactive" ? "text-mut" : "text-amber-600"}`}>
                       {p.stage === "approaching" && p.daysUntilDue != null ? `em ${p.daysUntilDue} d` : RETURN_STAGE_LABELS[p.stage as Exclude<ReturnStage, "unknown">]}
                     </span>
-                    <a href={whatsappLink(client.phone, returnMessage(client.name, p.stage, convite))} target="_blank" rel="noreferrer" className="shrink-0 text-[13px]" title="WhatsApp com a mensagem sugerida">💬</a>
+                    {client.phone && <a href={whatsappLink(client.phone, returnMessage(client.name, p.stage, convite))} target="_blank" rel="noreferrer" className="shrink-0 text-[13px]" title="WhatsApp com a mensagem sugerida">💬</a>}
                   </li>
                 ))}
               </ul>

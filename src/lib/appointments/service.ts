@@ -3,7 +3,7 @@ import { nanoid } from "nanoid";
 import { db } from "@/lib/db";
 import type { Tenant } from "@/generated/prisma/client";
 import type { AppointmentActor, AppointmentSource, AppointmentStatus } from "@/generated/prisma/enums";
-import { normalizePhone } from "@/lib/phone";
+import { parseClientPhone } from "@/lib/phone";
 import { getVisitSlots, occupiedUtc } from "@/lib/scheduling/service";
 import { espelharVisita, vincularVisita } from "@/lib/packages/service";
 import type { VisitItem } from "@/lib/scheduling/availability";
@@ -40,7 +40,8 @@ type CreateInput = {
   items: CreateItemInput[];
   dateKey: string;
   minutes: number; // início da visita (minutos do dia no fuso do tenant)
-  client: { name: string; phone: string; email?: string | null };
+  /** phone: obrigatório, a não ser que o estabelecimento dispense (Tenant.requirePhone = false). */
+  client: { name: string; phone?: string | null; email?: string | null };
   notes?: string | null;
   source: AppointmentSource;
   actor: AppointmentActor;
@@ -127,8 +128,9 @@ export async function createAppointment(input: CreateInput) {
   const resolved = await resolveVisitItems(tenant.id, input.items);
   const totals = visitTotals(resolved);
 
-  const phone = normalizePhone(input.client.phone);
-  if (!phone) throw new AppointmentError("Número de WhatsApp inválido.", "INVALID_PHONE");
+  const parsedPhone = parseClientPhone(input.client.phone, tenant.requirePhone);
+  if (!parsedPhone.ok) throw new AppointmentError(parsedPhone.error, "INVALID_PHONE");
+  const phone = parsedPhone.phone; // null = cliente sem telefone: não há WhatsApp a enviar
 
   // A mesma função que lista horários na página pública valida a escolha aqui.
   const slot = (await getVisitSlots({ tenant, items: resolved.map((r) => r.visitItem), dateKey })).find((s) => s.minutes === minutes);
@@ -157,20 +159,25 @@ export async function createAppointment(input: CreateInput) {
   // Sinal via Pix: só para agendamentos da página pública. Pagou = confirmou.
   const depositCents = source === "PUBLIC" ? computeDepositCents(tenant, totals.priceCents) : 0;
   // Confirmação automática quando o profissional dispensa WhatsApp ou agenda manualmente.
-  const autoConfirm = depositCents === 0 && (source === "DASHBOARD" || !tenant.requireWhatsappConfirmation);
+  // Sem telefone não há como confirmar por WhatsApp: a reserva já nasce confirmada (senão expiraria sem resposta).
+  const autoConfirm = depositCents === 0 && (source === "DASHBOARD" || !tenant.requireWhatsappConfirmation || !phone);
   const initialStatus: AppointmentStatus = depositCents > 0 ? "AWAITING_PAYMENT" : autoConfirm ? "CONFIRMED" : "PENDING";
   const paymentDeadline = new Date(Date.now() + tenant.depositTimeoutMinutes * 60_000);
 
   const appointment = await db.$transaction(
     async (tx) => {
-      const client = await tx.client.upsert({
-        where: { tenantId_phone: { tenantId: tenant.id, phone } },
-        create: { tenantId: tenant.id, name: input.client.name.trim(), phone, email: input.client.email?.trim() || null },
-        update: {
-          name: input.client.name.trim(),
-          ...(input.client.email?.trim() ? { email: input.client.email.trim() } : {}),
-        },
-      });
+      const email = input.client.email?.trim() || null;
+      const nome = input.client.name.trim();
+      // Com telefone, ele identifica a cliente. Sem telefone, só o e-mail identifica; sem nenhum dos dois, cada
+      // reserva cria uma cliente nova (juntar pelo nome misturaria duas "Maria"). A recepção une depois, no cadastro.
+      const client = phone
+        ? await tx.client.upsert({
+            where: { tenantId_phone: { tenantId: tenant.id, phone } },
+            create: { tenantId: tenant.id, name: nome, phone, email },
+            update: { name: nome, ...(email ? { email } : {}) },
+          })
+        : (email ? await tx.client.findFirst({ where: { tenantId: tenant.id, email, phone: null } }) : null)
+            ?? await tx.client.create({ data: { tenantId: tenant.id, name: nome, phone: null, email } });
 
       // Duplicado: mesmo cliente, mesmo horário, ainda ativo.
       const duplicate = await tx.appointment.findFirst({

@@ -100,7 +100,7 @@ const manualSchema = z.object({
   dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida"),
   minutes: z.coerce.number().int().min(0).max(1439),
   clientName: z.string().trim().min(2, "Informe o nome da cliente"),
-  clientPhone: z.string().trim().min(8, "Informe o WhatsApp da cliente"),
+  clientPhone: z.string().trim().optional().or(z.literal("")), // obrigatório ou não conforme o estabelecimento (createAppointment)
   notes: z.string().trim().max(300).optional().or(z.literal("")),
 });
 
@@ -126,7 +126,7 @@ export async function createManualAppointmentAction(_prev: ActionResult, formDat
       items: resolved,
       dateKey: d.dateKey,
       minutes: d.minutes,
-      client: { name: d.clientName, phone: d.clientPhone },
+      client: { name: d.clientName, phone: d.clientPhone || null },
       notes: d.notes || null,
       source: "DASHBOARD",
       actor: "PROFESSIONAL",

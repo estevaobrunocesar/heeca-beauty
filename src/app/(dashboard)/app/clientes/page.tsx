@@ -57,14 +57,14 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
               {clients.map((c) => (
                 <tr key={c.id} className="hover:bg-zinc-50">
                   <td className="px-4 py-2 font-medium"><Link href={`/app/clientes/${c.id}`} className="hover:underline">{c.name}</Link></td>
-                  <td className="px-4 py-2"><a href={whatsappLink(c.phone)} target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline">{formatPhone(c.phone)}</a></td>
+                  <td className="px-4 py-2">{c.phone ? <a href={whatsappLink(c.phone)} target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline">{formatPhone(c.phone)}</a> : <span className="text-zinc-400">Sem telefone</span>}</td>
                   <td className="px-4 py-2 text-xs text-zinc-500">
                     {resumoFicha(ficha, lerFicha(c.ficha, ficha)) || "—"}
                     {c.allergies && <span className="ml-1 text-rose-600" title={c.allergies}>⚠️</span>}
                   </td>
                   <td className="px-4 py-2 tabular-nums">{c._count.appointments}</td>
                   <td className="px-4 py-2 text-zinc-600">{c.appointments[0] ? `${fmtDate(c.appointments[0].startsAt, tenant.timezone)} · ${c.appointments[0].serviceName}` : "—"}</td>
-                  <td className="px-4 py-2 text-right"><Link href={`/app/agenda/novo?cliente=${encodeURIComponent(c.phone)}`} className="btn-ghost px-2 py-1 text-xs">Agendar</Link></td>
+                  <td className="px-4 py-2 text-right"><Link href={`/app/agenda/novo?cliente=${encodeURIComponent(c.id)}`} className="btn-ghost px-2 py-1 text-xs">Agendar</Link></td>
                 </tr>
               ))}
             </tbody>

@@ -119,7 +119,7 @@ export default async function PacoteVendidoPage({ params }: PageProps<"/app/paco
           <div className="card p-5">
             <h2 className="font-medium">Cliente</h2>
             <p className="mt-1 text-sm"><Link href={`/app/clientes/${pk.client.id}`} className="hover:underline">{pk.client.name}</Link></p>
-            <Link href={`/app/agenda/novo?cliente=${encodeURIComponent(pk.client.phone)}`} className="btn-primary mt-3 w-full">Agendar sessão</Link>
+            <Link href={`/app/agenda/novo?cliente=${encodeURIComponent(pk.client.id)}`} className="btn-primary mt-3 w-full">Agendar sessão</Link>
             <PackageTools kind="status" clientPackageId={pk.id} status={pk.status} />
           </div>
           {clinico && (

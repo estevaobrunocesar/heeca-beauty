@@ -56,15 +56,16 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
           <ClientForm
             id={client.id}
             initial={{
-              name: client.name, phone: formatPhone(client.phone), email: client.email ?? "", notes: client.notes ?? "",
+              name: client.name, phone: client.phone ? formatPhone(client.phone) : "", email: client.email ?? "", notes: client.notes ?? "",
               ficha: lerFicha(client.ficha, campos), allergies: client.allergies ?? "",
               maintenanceIntervalDays: client.maintenanceIntervalDays,
             }}
             campos={campos}
             grupos={grupos}
+            requirePhone={tenant.requirePhone}
           />
-          <Link href={`/app/agenda/novo?cliente=${encodeURIComponent(client.phone)}`} className="btn-primary w-full">Agendar para esta cliente</Link>
-          <a href={whatsappLink(client.phone)} target="_blank" rel="noreferrer" className="btn-secondary w-full">💬 Chamar no WhatsApp</a>
+          <Link href={`/app/agenda/novo?cliente=${encodeURIComponent(client.id)}`} className="btn-primary w-full">Agendar para esta cliente</Link>
+          {client.phone && <a href={whatsappLink(client.phone)} target="_blank" rel="noreferrer" className="btn-secondary w-full">💬 Chamar no WhatsApp</a>}
         </div>
 
         <div className="space-y-6">
@@ -82,7 +83,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
                   : ret.stage === "unknown" && ret.dueAt ? <>✅ Retorno previsto para <strong>{fmtDate(ret.dueAt, tenant.timezone)}</strong> (em {ret.daysUntilDue} dia(s)).</>
                   : <>✨ <strong>{RETURN_STAGE_LABELS[ret.stage as Exclude<ReturnStage, "unknown">]}</strong>{ret.dueAt ? <> — retorno previsto para <strong>{fmtDate(ret.dueAt, tenant.timezone)}</strong></> : null}{ret.source === "learned" && ret.intervalDays ? <> · ciclo aprendido ~{ret.intervalDays} d</> : null}.</>}
               </span>
-              {ret.stage !== "unknown" && <a href={whatsappLink(client.phone, returnMessage(client.name, ret.stage, fraseDeRetorno(segmentos)))} target="_blank" rel="noreferrer" className="btn-ghost shrink-0 px-2 py-1 text-xs">💬 Chamar no WhatsApp</a>}
+              {ret.stage !== "unknown" && client.phone && <a href={whatsappLink(client.phone, returnMessage(client.name, ret.stage, fraseDeRetorno(segmentos)))} target="_blank" rel="noreferrer" className="btn-ghost shrink-0 px-2 py-1 text-xs">💬 Chamar no WhatsApp</a>}
             </div>
           )}
           {noShows > 0 && <p className="text-xs text-rose-600">⚠️ {noShows} falta(s) registrada(s).</p>}

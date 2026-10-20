@@ -111,3 +111,15 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 **Descartado.** (1) Cor também no painel: quebra o padrão Heeca e o contraste do menu. (2) Duas cores (principal e destaque): mais campos, mais combinações ilegíveis. (3) Recusar cor clara em vez de ajustar: a pessoa não sabe qual cor escolher no lugar.
 
 **Consequência.** Migração aditiva `20261019120000_tenant_page_color` (`ALTER TABLE ... ADD COLUMN`, sem DROP).
+
+## 2026-10-20 — Telefone da cliente opcional por estabelecimento (pedido do Studio21)
+
+**Contexto.** A reserva exigia o WhatsApp da cliente (página pública, agendamento no painel e cadastro da cliente). O Studio21 quer aceitar reservas sem telefone.
+
+**Decisão.** Opção do estabelecimento, `Tenant.requirePhone` (padrão `true`, então nenhum outro salão muda), em Configurações → Horários e regras. `Client.phone` passou a aceitar `null`. Com a opção desligada, vazio é aceito, mas um número digitado continua precisando ser válido (`parseClientPhone`). A regra é uma só (`createAppointment`) e vale para a página pública e para o painel.
+
+**Efeitos de uma cliente sem telefone.** (1) Nenhuma mensagem de WhatsApp (confirmação, lembrete, cobrança): `sendAppointmentMessage` sai sem registrar nada. (2) A reserva **já nasce confirmada**: sem WhatsApp não há como confirmar, e uma pendente expiraria sozinha. (3) A tela final da reserva mostra um link `/confirmar/<token>` para ver, remarcar ou cancelar. (4) Identificação: com telefone, ele identifica a cliente (como antes); sem telefone, só o e-mail identifica; sem nenhum dos dois, cada reserva cria uma cliente nova. (5) Telas mostram "Sem telefone" e escondem os botões de WhatsApp; o link "Agendar" da lista de clientes passou a usar o id da cliente (antes era o telefone). (6) Pix: o e-mail técnico do pagador usa o id da cliente quando não há telefone nem e-mail.
+
+**Descartado.** (1) Juntar clientes sem telefone pelo nome: misturaria duas "Maria". Quem quiser unir faz no cadastro. (2) Tornar o telefone opcional para todos: quem depende da confirmação por WhatsApp perderia o fluxo. (3) Mensagem por outro canal (e-mail): fora do escopo.
+
+**Consequência.** Migração aditiva `20261020120000_phone_optional` (`ADD COLUMN requirePhone ... DEFAULT true` e `DROP NOT NULL` em `Client.phone`). O índice único `(tenantId, phone)` aceita vários nulos no Postgres. Studio21: o dono desmarca "Exigir o telefone da cliente ao agendar".

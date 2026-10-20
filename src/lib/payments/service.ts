@@ -27,7 +27,7 @@ export async function createDepositCharge(appointmentId: string, amountCents: nu
     description: `Sinal · ${appt.serviceName} · ${appt.tenant.businessName}`,
     externalReference: appt.id,
     expiresAt,
-    payer: { name: appt.client.name, email: appt.client.email, phone: appt.client.phone },
+    payer: { name: appt.client.name, email: appt.client.email, phone: appt.client.phone ?? "", id: appt.client.id },
     notificationUrl: provider.name === "mercadopago" ? `${appUrl()}/api/webhooks/mercadopago` : undefined,
   });
   return db.payment.create({

@@ -58,9 +58,11 @@ export function AppointmentCard({ appointment: a, tz, compact, showProfessional 
           {addOns.length > 0 && <span className="ml-1 rounded-full bg-brand-50 px-1.5 py-0.5 text-xs text-brand-800" title={addOns.map((x) => x.name).join(", ")}>+ {addOns.length} adicional{addOns.length > 1 ? "is" : ""}</span>}
           {salas && <span className="ml-1 rounded-full bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600">🚪 {salas}</span>}
           {" "}· {formatCents(a.priceCents)} ·{" "}
-          <a href={`https://wa.me/${a.client.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline">
-            {formatPhone(a.client.phone)}
-          </a>
+          {a.client.phone ? (
+            <a href={`https://wa.me/${a.client.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline">
+              {formatPhone(a.client.phone)}
+            </a>
+          ) : <span className="text-zinc-400">sem telefone</span>}
         </p>
         {pro && (
           <p className="mt-1 flex items-center gap-1.5 text-xs text-zinc-500">

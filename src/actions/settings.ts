@@ -107,6 +107,7 @@ const rulesSchema = z.object({
   maxConcurrentAppointments: z.coerce.number().int().min(1).max(20),
   maxDailyAppointments: z.coerce.number().int().min(0).max(50),
   requireWhatsappConfirmation: z.coerce.boolean(),
+  requirePhone: z.coerce.boolean(),
 });
 
 /** Regras de agendamento do estabelecimento. Horários semanais ficam em cada profissional. */
@@ -117,6 +118,7 @@ export async function updateScheduleAction(_prev: ActionResult, formData: FormDa
   const parsed = rulesSchema.safeParse({
     ...Object.fromEntries(formData),
     requireWhatsappConfirmation: formData.get("requireWhatsappConfirmation") === "on",
+    requirePhone: formData.get("requirePhone") === "on",
   });
   if (!parsed.success) return fail("Verifique os valores das regras da agenda.");
   const rules = parsed.data;

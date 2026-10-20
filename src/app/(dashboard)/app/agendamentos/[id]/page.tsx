@@ -95,7 +95,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
             maxAdvanceDays={tenant.maxAdvanceDays}
             internalNotes={a.internalNotes ?? ""}
             canReschedule={isActive(a.status)}
-            canResend={isActive(a.status)}
+            canResend={isActive(a.status) && !!a.client.phone}
           />
 
           {campos.length > 0 && <RegistroForm id={a.id} campos={campos} grupos={grupos} registro={lerFicha(a.registro, campos)} fichaAtual={fichaAtual} />}
@@ -122,7 +122,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
           <section className="card p-5">
             <h2 className="font-medium">Cliente</h2>
             <p className="mt-2 text-lg">{a.client.name}</p>
-            <a href={whatsappLink(a.client.phone)} target="_blank" rel="noreferrer" className="text-sm text-emerald-700 hover:underline">{formatPhone(a.client.phone)}</a>
+            {a.client.phone ? <a href={whatsappLink(a.client.phone)} target="_blank" rel="noreferrer" className="text-sm text-emerald-700 hover:underline">{formatPhone(a.client.phone)}</a> : <p className="text-sm text-zinc-400">Sem telefone</p>}
             {a.client.email && <p className="text-sm text-zinc-500">{a.client.email}</p>}
             <p className="mt-2 text-xs text-zinc-500">{a.client._count.appointments} agendamento(s) no total</p>
             {(ficha || a.client.allergies || a.client.notes) && (

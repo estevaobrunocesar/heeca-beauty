@@ -19,6 +19,7 @@ model Tenant {
   salasAtivas  Boolean  @default(false) // agenda por sala e recursos (spa, clínica): liga o cadastro de salas e o "onde" no serviço
   faltaConsomeSessao Boolean @default(true) // pacotes: falta (NO_SHOW) desconta uma sessão? Política do estabelecimento
   metaMensalCents    Int? // meta de faturamento do mês (anel do painel); null = sem meta
+  requirePhone       Boolean @default(true) // false = a cliente pode agendar sem telefone (sem WhatsApp de confirmação/lembrete)
   pageColor          String? // cor-base (#rrggbb) da página pública /agendar/<slug>; null = cor da marca. Já normalizada e com contraste ajustado (lib/cor-pagina.ts)
   slug         String  @unique // app.com.br/agendar/<slug>
   businessName String
@@ -435,7 +436,7 @@ model Client {
   id       String  @id @default(cuid())
   tenantId String
   name     String
-  phone    String // E.164, ex.: +5511999998888
+  phone    String? // E.164, ex.: +5511999998888. Null só quando o estabelecimento dispensa o telefone (Tenant.requirePhone = false)
   email    String?
   notes    String? // observações administrativas (SPEC §12)
 

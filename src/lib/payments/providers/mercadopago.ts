@@ -35,8 +35,8 @@ export class MercadoPagoProvider implements PixProvider {
   }
 
   async createCharge(input: CreateChargeInput): Promise<ChargeResult> {
-    // MP exige e-mail do pagador; sem e-mail usamos um endereço técnico derivado do telefone.
-    const email = input.payer.email?.trim() || `${input.payer.phone.replace(/\D/g, "")}@cliente.heeca.app`;
+    // MP exige e-mail do pagador; sem e-mail usamos um endereço técnico derivado do telefone (ou do id, se a cliente não tem telefone).
+    const email = input.payer.email?.trim() || `${input.payer.phone.replace(/\D/g, "") || input.payer.id}@cliente.heeca.app`;
     const [firstName, ...rest] = input.payer.name.trim().split(/\s+/);
     const body = {
       transaction_amount: Number((input.amountCents / 100).toFixed(2)),

@@ -14,14 +14,14 @@ type Values = {
 };
 
 /** Ficha da cliente: contato + ficha técnica dos segmentos ativos (lib/marca.ts) que a profissional consulta antes do atendimento. */
-export function ClientForm({ id, initial, campos, grupos }: { id: string; initial: Values; campos: CampoFicha[]; grupos: Record<string, string> }) {
+export function ClientForm({ id, initial, campos, grupos, requirePhone }: { id: string; initial: Values; campos: CampoFicha[]; grupos: Record<string, string>; requirePhone: boolean }) {
   const [state, action] = useActionState<ActionResult, FormData>(updateClientAction.bind(null, id), null);
   return (
     <form action={action} className="card space-y-3 p-5">
       {state?.ok && <Alert kind="success">{state.message}</Alert>}
       {state && !state.ok && <Alert>{state.error}</Alert>}
       <div><label className="label" htmlFor="name">Nome</label><input id="name" name="name" required className="input" defaultValue={initial.name} /></div>
-      <div><label className="label" htmlFor="phone">WhatsApp</label><input id="phone" name="phone" required className="input" defaultValue={initial.phone} /></div>
+      <div><label className="label" htmlFor="phone">WhatsApp{requirePhone ? "" : " (opcional)"}</label><input id="phone" name="phone" required={requirePhone} className="input" defaultValue={initial.phone} /></div>
       <div><label className="label" htmlFor="email">E-mail</label><input id="email" name="email" type="email" className="input" defaultValue={initial.email} /></div>
 
       <fieldset className="space-y-3 rounded-lg border border-brand-100 bg-brand-50/40 p-3">

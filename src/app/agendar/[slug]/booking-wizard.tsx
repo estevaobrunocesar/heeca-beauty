@@ -26,6 +26,8 @@ type Props = {
   requirePolicyAcceptance: boolean; policies: PolicyItem[];
   categories: CategoryRef[]; services: Service[]; addOns: AddOn[]; professionals: Professional[];
   depositMode: DepositMode; depositValue: number;
+  /** false = o estabelecimento aceita reserva sem telefone. */
+  requirePhone: boolean;
 };
 
 const MAX_ITEMS = 6;
@@ -40,7 +42,7 @@ function fmtDuration(min: number) {
  * Fluxo da cliente (SPEC §10–11): serviços → profissional/adicionais por serviço + data/horário → seus dados.
  * Estado vive só no cliente; o servidor valida tudo de novo no POST.
  */
-export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmation, requirePolicyAcceptance, policies, categories, services, addOns, professionals, depositMode, depositValue }: Props) {
+export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmation, requirePolicyAcceptance, policies, categories, services, addOns, professionals, depositMode, depositValue, requirePhone }: Props) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [items, setItems] = useState<VisitItem[]>([]);
   const [slot, setSlot] = useState<Slot | null>(null);
@@ -48,7 +50,7 @@ export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmat
   const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ status: string; professionalName?: string } | null>(null);
+  const [done, setDone] = useState<{ status: string; professionalName?: string; manageUrl?: string | null } | null>(null);
 
   const serviceById = useMemo(() => new Map(services.map((s) => [s.id, s])), [services]);
   const addOnById = useMemo(() => new Map(addOns.map((a) => [a.id, a])), [addOns]);
@@ -94,10 +96,18 @@ export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmat
         <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full text-3xl ${confirmed ? "bg-emerald-100" : "bg-brand-100"}`}>{confirmed ? "✨" : "💬"}</div>
         <h2 className="mt-4 font-display text-2xl font-semibold">{confirmed ? "Horário confirmado!" : "Quase lá!"}</h2>
         <p className="mt-2 text-sm text-zinc-600">
-          {confirmed
-            ? "Enviamos os detalhes para o seu WhatsApp. Estamos te esperando! 💜"
-            : "Enviamos uma mensagem no seu WhatsApp. Toque em Confirmar para garantir seu horário."}
+          {done.manageUrl
+            ? "Seu horário está reservado. Estamos te esperando! 💜"
+            : confirmed
+              ? "Enviamos os detalhes para o seu WhatsApp. Estamos te esperando! 💜"
+              : "Enviamos uma mensagem no seu WhatsApp. Toque em Confirmar para garantir seu horário."}
         </p>
+        {done.manageUrl && (
+          <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Como você não informou um telefone, não enviamos mensagem. <strong>Guarde este link</strong> para ver, remarcar ou cancelar:{" "}
+            <a href={done.manageUrl} className="font-medium underline">ver minha reserva</a>
+          </p>
+        )}
         <div className="mt-6 space-y-1 rounded-2xl bg-brand-50/60 p-4 text-left text-sm">
           <p><span className="text-zinc-500">{resolved.length > 1 ? "Serviços" : "Serviço"}:</span> {resolved.map((r) => r.service.name).join(" + ")}</p>
           {resolved.some((r) => r.chosenAddOns.length > 0) && (
@@ -124,14 +134,14 @@ export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmat
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items: pickerItems, acceptPolicies: accepted, dateKey: slot.dateKey, minutes: slot.minutes, ...form }),
       });
-      const json = (await res.json()) as { ok?: boolean; status?: string; error?: string; code?: string; professionalName?: string; paymentUrl?: string | null };
+      const json = (await res.json()) as { ok?: boolean; status?: string; error?: string; code?: string; professionalName?: string; paymentUrl?: string | null; manageUrl?: string | null };
       if (!res.ok || !json.ok) {
         setError(json.error ?? "Não foi possível agendar. Tente novamente.");
         if (json.code === "SLOT_UNAVAILABLE") { setSlot(null); setStep(2); }
         return;
       }
       if (json.paymentUrl) { window.location.assign(json.paymentUrl); return; }
-      setDone({ status: json.status ?? "PENDING", professionalName: json.professionalName });
+      setDone({ status: json.status ?? "PENDING", professionalName: json.professionalName, manageUrl: json.manageUrl });
     } catch {
       setError("Falha de conexão. Verifique sua internet e tente novamente.");
     } finally {
@@ -303,9 +313,13 @@ export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmat
             <input id="name" required autoComplete="name" className="input rounded-xl py-3" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </div>
           <div>
-            <label className="label" htmlFor="phone">WhatsApp</label>
-            <input id="phone" required inputMode="tel" autoComplete="tel" placeholder="(11) 99999-8888" className="input rounded-xl py-3" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            <p className="mt-1 text-xs text-zinc-500">{requireConfirmation ? "Você receberá uma mensagem para confirmar o horário." : "Enviaremos a confirmação por WhatsApp."}</p>
+            <label className="label" htmlFor="phone">WhatsApp{requirePhone ? "" : <span className="font-normal text-zinc-400"> (opcional)</span>}</label>
+            <input id="phone" required={requirePhone} inputMode="tel" autoComplete="tel" placeholder="(11) 99999-8888" className="input rounded-xl py-3" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            <p className="mt-1 text-xs text-zinc-500">
+              {requirePhone
+                ? requireConfirmation ? "Você receberá uma mensagem para confirmar o horário." : "Enviaremos a confirmação por WhatsApp."
+                : form.phone.trim() ? "Enviaremos a confirmação por WhatsApp." : "Sem telefone não enviamos mensagem; você receberá um link para ver ou cancelar a reserva."}
+            </p>
           </div>
           <div>
             <label className="label" htmlFor="email">E-mail <span className="font-normal text-zinc-400">(opcional)</span></label>

@@ -8,7 +8,7 @@ export type CreateChargeInput = {
   description: string;
   externalReference: string; // id do agendamento
   expiresAt: Date;
-  payer: { name: string; email?: string | null; phone: string };
+  payer: { id: string; name: string; email?: string | null; phone: string };
   notificationUrl?: string;
 };
 

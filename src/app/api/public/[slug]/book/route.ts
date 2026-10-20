@@ -21,7 +21,7 @@ const bodySchema = z.object({
   dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   minutes: z.number().int().min(0).max(1439),
   name: z.string().trim().min(2, "Informe seu nome").max(80),
-  phone: z.string().trim().min(8, "Informe seu WhatsApp"),
+  phone: z.string().trim().optional().or(z.literal("")), // obrigatório conforme o estabelecimento (createAppointment)
   email: z.string().trim().email("E-mail inválido").optional().or(z.literal("")),
   notes: z.string().trim().max(300).optional().or(z.literal("")),
 });
@@ -60,7 +60,7 @@ export async function POST(req: Request, { params }: RouteContext<"/api/public/[
       items,
       dateKey: d.dateKey,
       minutes: d.minutes,
-      client: { name: d.name, phone: d.phone, email: d.email || null },
+      client: { name: d.name, phone: d.phone || null, email: d.email || null },
       notes: d.notes || null,
       source: "PUBLIC",
       actor: "CLIENT",
@@ -75,6 +75,8 @@ export async function POST(req: Request, { params }: RouteContext<"/api/public/[
       // Sinal pendente: o front leva o cliente para a página do Pix
       paymentUrl: fresh?.status === "AWAITING_PAYMENT" ? `/pagar/${appt.confirmationToken}` : null,
       depositCents: fresh?.payment?.amountCents ?? null,
+      // Cliente sem telefone não recebe WhatsApp: este link é como ela vê, remarca ou cancela a reserva.
+      manageUrl: d.phone ? null : `/confirmar/${appt.confirmationToken}`,
     });
   } catch (e) {
     if (e instanceof AppointmentError) return NextResponse.json({ ok: false, error: e.message, code: e.code }, { status: 409 });

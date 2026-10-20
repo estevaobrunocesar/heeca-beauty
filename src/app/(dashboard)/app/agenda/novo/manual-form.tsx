@@ -13,7 +13,7 @@ import { computeBookingTotals } from "@/lib/services/addons";
 
 type Service = { id: string; name: string; durationMinutes: number; priceCents: number; professionalIds: string[] };
 type AddOn = { id: string; name: string; durationMinutes: number; priceCents: number };
-type ClientOpt = { name: string; phone: string };
+type ClientOpt = { id: string; name: string; phone: string | null };
 type Pro = { id: string; name: string; photoUrl: string | null };
 
 /** Um serviço da visita no formulário do painel: sempre com profissional definido (a recepção decide). */
@@ -22,7 +22,7 @@ type Item = { key: number; serviceId: string; professionalId: string; addOnIds: 
 type Props = {
   slug: string; todayKey: string; maxAdvanceDays: number;
   professionals: Pro[]; defaultProfessionalId: string;
-  services: Service[]; addOns: AddOn[]; clients: ClientOpt[]; preselected: ClientOpt | null;
+  services: Service[]; addOns: AddOn[]; clients: ClientOpt[]; preselected: ClientOpt | null; requirePhone: boolean;
 };
 
 const MAX_ITEMS = 6;
@@ -33,7 +33,7 @@ function fmtDuration(min: number) {
   return h === 0 ? `${m} min` : m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, "0")}`;
 }
 
-export function ManualAppointmentForm({ slug, todayKey, maxAdvanceDays, professionals, defaultProfessionalId, services, addOns, clients, preselected }: Props) {
+export function ManualAppointmentForm({ slug, todayKey, maxAdvanceDays, professionals, defaultProfessionalId, services, addOns, clients, preselected, requirePhone }: Props) {
   const router = useRouter();
   const [state, action] = useActionState(createManualAppointmentAction, null);
   const servicesFor = (professionalId: string) => services.filter((s) => s.professionalIds.includes(professionalId));
@@ -41,7 +41,7 @@ export function ManualAppointmentForm({ slug, todayKey, maxAdvanceDays, professi
   const [items, setItems] = useState<Item[]>([{ key: 1, serviceId: firstService(defaultProfessionalId), professionalId: defaultProfessionalId, addOnIds: [] }]);
   const [slot, setSlot] = useState<{ dateKey: string; minutes: number } | null>(null);
   const [name, setName] = useState(preselected?.name ?? "");
-  const [phone, setPhone] = useState(preselected ? formatPhone(preselected.phone) : "");
+  const [phone, setPhone] = useState(preselected?.phone ? formatPhone(preselected.phone) : "");
 
   useEffect(() => {
     if (state?.ok) router.push(`/app/agendamentos/${state.message}`);
@@ -96,15 +96,15 @@ export function ManualAppointmentForm({ slug, todayKey, maxAdvanceDays, professi
               onChange={(e) => {
                 setName(e.target.value);
                 const match = clients.find((c) => c.name === e.target.value);
-                if (match) setPhone(formatPhone(match.phone));
+                if (match) setPhone(match.phone ? formatPhone(match.phone) : "");
               }} />
             <datalist id="clients">
-              {clients.map((c) => <option key={c.phone} value={c.name} />)}
+              {clients.map((c) => <option key={c.id} value={c.name} />)}
             </datalist>
           </div>
           <div>
-            <label className="label" htmlFor="clientPhone">WhatsApp</label>
-            <input id="clientPhone" name="clientPhone" required inputMode="tel" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-8888" />
+            <label className="label" htmlFor="clientPhone">WhatsApp{requirePhone ? "" : " (opcional)"}</label>
+            <input id="clientPhone" name="clientPhone" required={requirePhone} inputMode="tel" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-8888" />
           </div>
         </div>
       </section>
