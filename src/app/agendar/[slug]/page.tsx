@@ -94,7 +94,8 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
           ) : (
             <span className={`${serif.className} flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sm`}>{tenant.businessName.slice(0, 1).toUpperCase()}</span>
           )}
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">{tenant.businessName}</span>
+          {/* Com logo, a logo é o nome (o alt já o diz): sem o texto ao lado. Sem logo, aparece o nome. */}
+          {tenant.logoUrl ? <span className="flex-1" aria-hidden /> : <span className="min-w-0 flex-1 truncate text-sm font-medium">{tenant.businessName}</span>}
           <a href="#agendar" className="shrink-0 rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-brand-900 transition hover:bg-brand-50">Agendar</a>
         </div>
       </div>
