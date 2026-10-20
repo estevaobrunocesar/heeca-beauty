@@ -102,6 +102,7 @@ const manualSchema = z.object({
   clientName: z.string().trim().min(2, "Informe o nome da cliente"),
   clientPhone: z.string().trim().optional().or(z.literal("")), // obrigatório ou não conforme o estabelecimento (createAppointment)
   notes: z.string().trim().max(300).optional().or(z.literal("")),
+  parallel: z.string().optional(), // "1" = serviços ao mesmo tempo (cada profissional no seu)
 });
 
 /** Agendamento manual criado no painel (ex.: cliente ligou). Nasce CONFIRMADO. Aceita vários serviços (SPEC §11). */
@@ -130,6 +131,7 @@ export async function createManualAppointmentAction(_prev: ActionResult, formDat
       notes: d.notes || null,
       source: "DASHBOARD",
       actor: "PROFESSIONAL",
+      parallel: d.parallel === "1" && resolved.length > 1,
     });
     revalidateAgenda(appt.id);
     return success(appt.id);

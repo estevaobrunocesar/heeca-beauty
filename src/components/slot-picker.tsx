@@ -15,6 +15,8 @@ type Props = {
   serviceId?: string;
   addOnIds?: string[]; // adicionais escolhidos (somam à duração)
   excludeAppointmentId?: string; // reagendamento: os itens vêm do próprio agendamento
+  /** Visita simultânea (painel): os serviços começam juntos, cada profissional no seu. */
+  parallel?: boolean;
   professionalId?: string | null; // null/undefined = qualquer profissional| null; // null/undefined = qualquer profissional
   todayKey: string; // no fuso do tenant, calculado no servidor
   maxAdvanceDays: number;
@@ -26,7 +28,7 @@ type Props = {
  * Calendário mensal + lista de horários. Consulta a API pública de disponibilidade,
  * que usa exatamente a mesma função de cálculo usada na validação do agendamento.
  */
-export function SlotPicker({ slug, items, serviceId, addOnIds, excludeAppointmentId, professionalId, todayKey, maxAdvanceDays, value, onChange }: Props) {
+export function SlotPicker({ slug, items, serviceId, addOnIds, excludeAppointmentId, parallel, professionalId, todayKey, maxAdvanceDays, value, onChange }: Props) {
   const addOnsKey = addOnIds?.join(",") ?? "";
   // Serializado para entrar na chave de cache e no efeito sem depender da identidade do array.
   const itemsJson = items ? JSON.stringify(items.map((i) => ({ serviceId: i.serviceId, professionalId: i.professionalId ?? null, addOnIds: i.addOnIds ?? [] }))) : "";
@@ -48,8 +50,9 @@ export function SlotPicker({ slug, items, serviceId, addOnIds, excludeAppointmen
       if (addOnsKey) p.set("addOns", addOnsKey);
       if (professionalId) p.set("professionalId", professionalId);
     }
+    if (parallel && !excludeAppointmentId) p.set("parallel", "1");
     return p;
-  }, [itemsJson, serviceId, addOnsKey, excludeAppointmentId, professionalId]);
+  }, [itemsJson, serviceId, addOnsKey, excludeAppointmentId, professionalId, parallel]);
 
   const daysKey = `${monthKey}|${baseQuery}`;
   const slotsKey = selectedDay ? `${selectedDay}|${baseQuery}` : null;

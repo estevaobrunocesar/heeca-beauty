@@ -123,3 +123,15 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 **Descartado.** (1) Juntar clientes sem telefone pelo nome: misturaria duas "Maria". Quem quiser unir faz no cadastro. (2) Tornar o telefone opcional para todos: quem depende da confirmação por WhatsApp perderia o fluxo. (3) Mensagem por outro canal (e-mail): fora do escopo.
 
 **Consequência.** Migração aditiva `20261020120000_phone_optional` (`ADD COLUMN requirePhone ... DEFAULT true` e `DROP NOT NULL` em `Client.phone`). O índice único `(tenantId, phone)` aceita vários nulos no Postgres. Studio21: o dono desmarca "Exigir o telefone da cliente ao agendar".
+
+## 2026-10-20 — Visita com serviços ao mesmo tempo (simultânea), no painel da equipe
+
+**Contexto.** Cliente que corta o cabelo e, na mesma hora, faz mão e cílios. A visita com itens (SPEC §11) encadeava os serviços: cada um começava quando o anterior terminava, e 5 serviços feitos por pessoas diferentes somavam o tempo de todos.
+
+**Decisão.** Modo **simultâneo** ao lado do sequencial (`placeVisitParallel` em `scheduling/availability.ts`). Todos os serviços começam juntos, cada profissional fica ocupado só pelo tempo do próprio serviço, e a visita dura até o último terminar (corte 1h + mão 1h + cílios 1h30 = 1h30, não 3h30). Regras: (1) um profissional nunca faz dois itens ao mesmo tempo (se a visita tem dois serviços dele, o segundo vem depois do primeiro, e item com vários candidatos prefere quem está livre para começar junto); (2) sala e recurso já usados por outro item da mesma visita no mesmo intervalo não estão livres; (3) os inícios possíveis são as janelas de todos os profissionais da visita, não só os do primeiro item.
+
+**Onde.** Só no agendamento manual do painel (Agenda → Novo agendamento, caixa "Fazer os serviços ao mesmo tempo", visível com 2+ serviços; a tela mostra o tempo estimado, ex.: "≈ 50 min no total"). A página pública continua em sequência (`/book` nunca manda `parallel`). A mesma função de horários valida a criação (`getVisitSlots(..., { parallel })`), então não há divergência entre o que a tela mostra e o que é gravado.
+
+**Sem migração.** O modo não é gravado: ele é inferido dos itens (`visitIsParallel`: dois itens sobrepostos), e é assim que o reagendamento mantém a visita simultânea. `Appointment.durationMinutes` passa a ser o tempo total (início ao último fim) nas visitas simultâneas; preço e comissão seguem por item, sem mudança.
+
+**Descartado.** (1) Só uma estimativa manual de tempo (um bloco para todos): bloquearia todos os profissionais pelo tempo inteiro e não saberia quem faz o quê. (2) Gravar um campo `parallel`: o dado já está nos itens, e um campo poderia divergir deles. (3) Liberar na página pública: a cliente escolheria combinações que a recepção ainda não validou; fica para uma decisão futura.

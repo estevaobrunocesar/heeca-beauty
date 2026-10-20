@@ -261,6 +261,65 @@ export function placeVisit(startMinutes: number, items: VisitItem[], ctx: Placem
   return placements;
 }
 
+const sobrepoe = (a: MinuteRange, b: MinuteRange) => a.start < b.end && b.start < a.end;
+
+/**
+ * Visita SIMULTÂNEA: todos os serviços começam juntos (corte, mão e cílios ao mesmo tempo, cada um com o seu
+ * profissional) e a visita dura até o último terminar. Cada profissional fica ocupado só pelo próprio serviço.
+ *
+ * Regras:
+ *  - cada item tenta começar em `startMinutes`, com o primeiro candidato livre;
+ *  - um profissional nunca faz dois itens ao mesmo tempo: se o mesmo profissional faz dois serviços da visita, o
+ *    segundo começa quando o primeiro termina (e, havendo outro candidato livre para começar junto, ele é preferido);
+ *  - como os itens se sobrepõem, a sala e os recursos já usados por OUTRO item da mesma visita no mesmo intervalo
+ *    não estão livres: duas pessoas não ocupam a mesma sala ao mesmo tempo.
+ */
+export function placeVisitParallel(startMinutes: number, items: VisitItem[], ctx: PlacementContext): ItemPlacement[] | null {
+  const placements: ItemPlacement[] = [];
+  const profEnd = new Map<string, number>(); // até quando cada profissional já está ocupado NESTA visita
+  const salas: { roomId: string; range: MinuteRange }[] = [];
+  const recursos: { resourceId: string; quantity: number; range: MinuteRange }[] = [];
+
+  for (const item of items) {
+    // O que a própria visita já usa entra na conta de sala e de recurso.
+    const local: PlacementContext = {
+      isProfessionalFree: ctx.isProfessionalFree,
+      isRoomFree: (roomId, range) => ctx.isRoomFree(roomId, range) && !salas.some((u) => u.roomId === roomId && sobrepoe(u.range, range)),
+      resourceUnitsFree: (resourceId, range) =>
+        ctx.resourceUnitsFree(resourceId, range) - recursos.filter((u) => u.resourceId === resourceId && sobrepoe(u.range, range)).reduce((n, u) => n + u.quantity, 0),
+    };
+
+    let escolha: { professionalId: string; core: MinuteRange; roomId: string | null } | null = null;
+    for (const professionalId of item.candidates) {
+      const start = Math.max(startMinutes, profEnd.get(professionalId) ?? startMinutes);
+      const core: MinuteRange = { start, end: start + item.durationMinutes };
+      if (!local.isProfessionalFree(professionalId, core)) continue;
+      const occupied = occupiedRange(core, item);
+      let roomId: string | null = null;
+      if (item.roomCandidates != null) {
+        roomId = pickRoom(item.roomCandidates, occupied, local);
+        if (!roomId) continue;
+      }
+      if ((item.resources ?? []).some((need) => local.resourceUnitsFree(need.resourceId, occupied) < need.quantity)) continue;
+      if (!escolha || core.start < escolha.core.start) escolha = { professionalId, core, roomId };
+      if (core.start === startMinutes) break; // já começa junto: não há melhor
+    }
+    if (!escolha) return null;
+
+    const occupied = occupiedRange(escolha.core, item);
+    if (escolha.roomId) salas.push({ roomId: escolha.roomId, range: occupied });
+    for (const need of item.resources ?? []) recursos.push({ resourceId: need.resourceId, quantity: need.quantity, range: occupied });
+    profEnd.set(escolha.professionalId, escolha.core.end);
+    placements.push({ key: item.key, professionalId: escolha.professionalId, roomId: escolha.roomId, ...escolha.core });
+  }
+  return placements;
+}
+
+/** A visita já gravada é simultânea? (dois itens de profissionais diferentes acontecendo ao mesmo tempo). Usado ao reagendar. */
+export function visitIsParallel(items: { startsAt: Date; endsAt: Date }[]): boolean {
+  return items.some((a, i) => items.some((b, j) => j > i && a.startsAt < b.endsAt && b.startsAt < a.endsAt));
+}
+
 export type VisitAvailabilityInput = {
   dateKey: DateKey;
   tz: string;
@@ -271,6 +330,8 @@ export type VisitAvailabilityInput = {
   resources?: Map<string, ResourceDay>; // por resourceId
   slotIntervalMinutes: number;
   minAdvanceMinutes: number;
+  /** true = os serviços começam juntos (placeVisitParallel); padrão = em sequência (placeVisit). */
+  parallel?: boolean;
 };
 
 /** Monta o `PlacementContext` a partir dos mapas por dia. */
@@ -292,9 +353,12 @@ export function computeVisitSlots(input: VisitAvailabilityInput): VisitSlot[] {
   const ctx = contextFromDays(input);
 
   // Inícios candidatos: começo de cada janela de cada profissional do primeiro item, avançando de `step`.
+  // Na visita simultânea todos os itens começam no mesmo horário, então valem as janelas de todos os candidatos.
   const step = Math.max(5, input.slotIntervalMinutes);
   const starts = new Set<number>();
-  for (const pid of items[0].candidates) {
+  const candidatos = input.parallel ? [...new Set(items.flatMap((i) => i.candidates))] : items[0].candidates;
+  const place = input.parallel ? placeVisitParallel : placeVisit;
+  for (const pid of candidatos) {
     for (const w of days.get(pid)?.windows ?? []) for (let m = w.start; m < w.end; m += step) starts.add(m);
   }
 
@@ -303,7 +367,7 @@ export function computeVisitSlots(input: VisitAvailabilityInput): VisitSlot[] {
   for (const m of [...starts].sort((a, b) => a - b)) {
     const startsAt = zonedDateTimeToUtc(dateKey, m, tz);
     if (startsAt < earliestStart) continue;
-    const placements = placeVisit(m, items, ctx);
+    const placements = place(m, items, ctx);
     if (!placements) continue;
     const end = Math.max(...placements.map((p) => p.end));
     slots.push({ minutes: m, startsAt, endsAt: zonedDateTimeToUtc(dateKey, end, tz), placements });

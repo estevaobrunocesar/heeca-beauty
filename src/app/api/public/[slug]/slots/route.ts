@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getDaysWithVisitAvailability, getVisitSlots } from "@/lib/scheduling/service";
-import type { VisitItem } from "@/lib/scheduling/availability";
+import { visitIsParallel, type VisitItem } from "@/lib/scheduling/availability";
 import { AppointmentError, resolveVisitItems, type CreateItemInput } from "@/lib/appointments/service";
 import { addDaysToKey, todayKey } from "@/lib/dates";
 
@@ -36,11 +36,14 @@ export async function GET(req: Request, { params }: RouteContext<"/api/public/[s
 
   let items: VisitItem[];
   const exclude = q("exclude") ?? undefined;
+  // Visita simultânea (painel): os serviços começam juntos. Ao reagendar, o modo é o da própria visita.
+  let parallel = q("parallel") === "1";
   try {
     if (exclude) {
       const appt = await db.appointment.findFirst({ where: { id: exclude, tenantId: tenant.id }, include: { items: { orderBy: { sortOrder: "asc" } } } });
       if (!appt) return NextResponse.json({ error: "appointment_not_found" }, { status: 404 });
       items = appt.items.map((it) => ({ key: it.id, durationMinutes: it.durationMinutes, candidates: [it.professionalId] }));
+      parallel = visitIsParallel(appt.items);
     } else {
       let inputs: CreateItemInput[];
       if (q("items")) {
@@ -66,14 +69,14 @@ export async function GET(req: Request, { params }: RouteContext<"/api/public/[s
     if (!DATE_RE.test(from) || !DATE_RE.test(to) || to < from || addDaysToKey(from, 62) < to) {
       return NextResponse.json({ error: "bad_range" }, { status: 400 });
     }
-    const days = await getDaysWithVisitAvailability({ tenant, items, fromKey: from, toKey: to });
+    const days = await getDaysWithVisitAvailability({ tenant, items, fromKey: from, toKey: to, parallel });
     return NextResponse.json({ days: [...days] }, { headers });
   }
 
   const date = q("date") ?? todayKey(tenant.timezone);
   if (!DATE_RE.test(date)) return NextResponse.json({ error: "bad_date" }, { status: 400 });
 
-  const slots = await getVisitSlots({ tenant, items, dateKey: date, excludeAppointmentId: exclude });
+  const slots = await getVisitSlots({ tenant, items, dateKey: date, excludeAppointmentId: exclude, parallel });
   return NextResponse.json(
     {
       date,

@@ -289,6 +289,8 @@ export async function getVisitSlots(opts: {
   dateKey: DateKey;
   now?: Date;
   excludeAppointmentId?: string; // reagendamento: ignora os itens da própria visita
+  /** true = os serviços começam juntos, cada profissional no seu (visita simultânea). */
+  parallel?: boolean;
 }): Promise<VisitSlot[]> {
   const { tenant, dateKey } = opts;
   const now = opts.now ?? new Date();
@@ -298,6 +300,7 @@ export async function getVisitSlots(opts: {
     dateKey, tz: tenant.timezone, now, items, ...daysFor(dateKey),
     slotIntervalMinutes: tenant.slotIntervalMinutes,
     minAdvanceMinutes: tenant.minAdvanceMinutes,
+    parallel: opts.parallel,
   });
 }
 
@@ -307,6 +310,7 @@ export async function getDaysWithVisitAvailability(opts: {
   items: VisitItem[];
   fromKey: DateKey;
   toKey: DateKey;
+  parallel?: boolean;
 }): Promise<Set<DateKey>> {
   const { tenant, items, fromKey, toKey } = opts;
   const now = new Date();
@@ -317,6 +321,7 @@ export async function getDaysWithVisitAvailability(opts: {
       dateKey: key, tz: tenant.timezone, now, items, ...daysFor(key),
       slotIntervalMinutes: tenant.slotIntervalMinutes,
       minAdvanceMinutes: tenant.minAdvanceMinutes,
+      parallel: opts.parallel,
     });
     if (slots.length > 0) result.add(key);
   }

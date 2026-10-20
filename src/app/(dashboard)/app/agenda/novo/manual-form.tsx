@@ -40,6 +40,8 @@ export function ManualAppointmentForm({ slug, todayKey, maxAdvanceDays, professi
   const firstService = (professionalId: string) => servicesFor(professionalId)[0]?.id ?? "";
   const [items, setItems] = useState<Item[]>([{ key: 1, serviceId: firstService(defaultProfessionalId), professionalId: defaultProfessionalId, addOnIds: [] }]);
   const [slot, setSlot] = useState<{ dateKey: string; minutes: number } | null>(null);
+  // Serviços ao mesmo tempo: todos começam juntos, cada profissional faz o seu (só vale com 2 ou mais serviços).
+  const [parallel, setParallel] = useState(false);
   const [name, setName] = useState(preselected?.name ?? "");
   const [phone, setPhone] = useState(preselected?.phone ? formatPhone(preselected.phone) : "");
 
@@ -78,6 +80,11 @@ export function ManualAppointmentForm({ slug, todayKey, maxAdvanceDays, professi
   });
   const complete = resolved.every((r) => r.service);
   const totals = resolved.reduce((acc, r) => ({ durationMinutes: acc.durationMinutes + (r.totals?.durationMinutes ?? 0), priceCents: acc.priceCents + (r.totals?.priceCents ?? 0) }), { durationMinutes: 0, priceCents: 0 });
+  const simultaneo = parallel && items.length > 1;
+  // Tempo estimado da visita simultânea: o profissional mais ocupado define o fim (quem faz dois serviços faz um depois do outro).
+  const cargaPorProfissional = new Map<string, number>();
+  for (const r of resolved) cargaPorProfissional.set(r.professionalId, (cargaPorProfissional.get(r.professionalId) ?? 0) + (r.totals?.durationMinutes ?? 0));
+  const tempoEstimado = simultaneo ? Math.max(0, ...cargaPorProfissional.values()) : totals.durationMinutes;
   const pickerItems: SlotPickerItem[] = items.map((it) => ({ serviceId: it.serviceId, professionalId: it.professionalId, addOnIds: it.addOnIds }));
   const payload = JSON.stringify(items.map((it) => ({ serviceId: it.serviceId, professionalId: it.professionalId, addOnIds: it.addOnIds })));
 
@@ -112,9 +119,24 @@ export function ManualAppointmentForm({ slug, todayKey, maxAdvanceDays, professi
       <section className="card space-y-3 p-5">
         <div className="flex items-baseline justify-between">
           <h2 className="font-medium">2. Serviços</h2>
-          <span className="text-xs text-zinc-500">{items.length > 1 ? `${items.length} serviços · ` : ""}{fmtDuration(totals.durationMinutes)} · {formatCents(totals.priceCents)}</span>
+          <span className="text-xs text-zinc-500">{items.length > 1 ? `${items.length} serviços · ` : ""}{simultaneo ? "≈ " : ""}{fmtDuration(tempoEstimado)}{simultaneo ? " no total" : ""} · {formatCents(totals.priceCents)}</span>
         </div>
-        {items.length > 1 && <p className="text-xs text-zinc-500">Nesta ordem, um depois do outro. Cada serviço ocupa a agenda do próprio profissional.</p>}
+        {items.length > 1 && (
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm">
+            <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-zinc-300" checked={parallel} onChange={(e) => { setParallel(e.target.checked); setSlot(null); }} />
+            <span>
+              <span className="font-medium">Fazer os serviços ao mesmo tempo</span>
+              <span className="mt-0.5 block text-xs text-zinc-500">
+                {!simultaneo
+                  ? "Ex.: corte, mão e cílios na mesma hora, cada um com o seu profissional. Desmarcado, um serviço começa quando o anterior termina."
+                  : tempoEstimado < totals.durationMinutes
+                    ? `Todos começam juntos e cada profissional faz o seu. A visita dura até o último terminar: cerca de ${fmtDuration(tempoEstimado)}, em vez de ${fmtDuration(totals.durationMinutes)} em sequência.`
+                    : "Os serviços são do mesmo profissional, então um começa quando o outro termina. Escolha profissionais diferentes em cada serviço para eles acontecerem ao mesmo tempo."}
+              </span>
+            </span>
+          </label>
+        )}
+        {items.length > 1 && !simultaneo && <p className="text-xs text-zinc-500">Nesta ordem, um depois do outro. Cada serviço ocupa a agenda do próprio profissional.</p>}
 
         <div className="space-y-3">
           {resolved.map((it, index) => {
@@ -180,12 +202,13 @@ export function ManualAppointmentForm({ slug, todayKey, maxAdvanceDays, professi
           <button type="button" className="btn-secondary" onClick={addItem}>+ Adicionar serviço</button>
         )}
         <input type="hidden" name="items" value={payload} />
+        <input type="hidden" name="parallel" value={simultaneo ? "1" : ""} />
       </section>
 
       <section className="card space-y-3 p-5">
         <h2 className="font-medium">3. Data e horário</h2>
         {complete && (
-          <SlotPicker slug={slug} items={pickerItems} todayKey={todayKey} maxAdvanceDays={maxAdvanceDays} value={slot} onChange={setSlot} />
+          <SlotPicker slug={slug} items={pickerItems} parallel={simultaneo} todayKey={todayKey} maxAdvanceDays={maxAdvanceDays} value={slot} onChange={setSlot} />
         )}
         <input type="hidden" name="dateKey" value={slot?.dateKey ?? ""} />
         <input type="hidden" name="minutes" value={slot?.minutes ?? ""} />

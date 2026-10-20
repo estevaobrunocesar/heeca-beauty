@@ -5,6 +5,7 @@ import type { Tenant } from "@/generated/prisma/client";
 import type { AppointmentActor, AppointmentSource, AppointmentStatus } from "@/generated/prisma/enums";
 import { parseClientPhone } from "@/lib/phone";
 import { getVisitSlots, occupiedUtc } from "@/lib/scheduling/service";
+import { visitIsParallel } from "@/lib/scheduling/availability";
 import { espelharVisita, vincularVisita } from "@/lib/packages/service";
 import type { VisitItem } from "@/lib/scheduling/availability";
 import { zonedDateTimeToUtc } from "@/lib/dates";
@@ -45,6 +46,8 @@ type CreateInput = {
   notes?: string | null;
   source: AppointmentSource;
   actor: AppointmentActor;
+  /** Visita simultânea (só pelo painel): os serviços começam juntos, cada profissional no seu. */
+  parallel?: boolean;
 };
 
 export const MAX_ITEMS_PER_VISIT = 6;
@@ -133,7 +136,7 @@ export async function createAppointment(input: CreateInput) {
   const phone = parsedPhone.phone; // null = cliente sem telefone: não há WhatsApp a enviar
 
   // A mesma função que lista horários na página pública valida a escolha aqui.
-  const slot = (await getVisitSlots({ tenant, items: resolved.map((r) => r.visitItem), dateKey })).find((s) => s.minutes === minutes);
+  const slot = (await getVisitSlots({ tenant, items: resolved.map((r) => r.visitItem), dateKey, parallel: input.parallel })).find((s) => s.minutes === minutes);
   if (!slot) throw new AppointmentError("Este horário não está mais disponível. Escolha outro.", "SLOT_UNAVAILABLE");
   const placementOf = (index: number) => slot.placements.find((p) => p.key === String(index))!;
   const itemRows = resolved.map((r, index) => {
@@ -195,7 +198,8 @@ export async function createAppointment(input: CreateInput) {
           status: initialStatus,
           source,
           serviceName: describeVisit(resolved),
-          durationMinutes: totals.durationMinutes,
+          // Simultânea: a visita dura do primeiro início ao último fim (não a soma dos serviços).
+          durationMinutes: input.parallel ? Math.round((slot.endsAt.getTime() - slot.startsAt.getTime()) / 60_000) : totals.durationMinutes,
           priceCents: totals.priceCents,
           items: { create: itemRows },
           notes: input.notes?.trim() || null,
@@ -336,7 +340,8 @@ export async function reschedule(input: {
     roomCandidates: it.roomId ? [it.roomId] : null, resources: it.resources,
     bufferBeforeMinutes: it.bufferBeforeMinutes, bufferAfterMinutes: it.bufferAfterMinutes,
   }));
-  const slots = await getVisitSlots({ tenant, items: visitItems, dateKey, excludeAppointmentId: appt.id });
+  // Visita simultânea continua simultânea ao remarcar: o modo vem de como os itens foram gravados.
+  const slots = await getVisitSlots({ tenant, items: visitItems, dateKey, excludeAppointmentId: appt.id, parallel: visitIsParallel(appt.items) });
   const slot = slots.find((s) => s.minutes === minutes);
   if (!slot) throw new AppointmentError("Horário indisponível para reagendamento.", "SLOT_UNAVAILABLE");
 

@@ -15,6 +15,7 @@ import { RegistroForm } from "./registro-form";
 import { perfilDoTenant } from "@/lib/marca-atual";
 import { lerFicha, resumoFicha } from "@/lib/clients/ficha";
 import { moduloClinicoAtivo } from "@/lib/treatments/rules";
+import { visitIsParallel } from "@/lib/scheduling/availability";
 import { SessionEvolution } from "../../pacotes/[id]/clinical-tools";
 
 export default async function AppointmentDetailPage({ params }: PageProps<"/app/agendamentos/[id]">) {
@@ -51,7 +52,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h1 className="text-xl font-semibold">{a.serviceName}</h1>
-                <p className="mt-1 text-zinc-600">{fmtDateTime(a.startsAt, tz)} → {fmtTime(a.endsAt, tz)} · {a.durationMinutes} min · {formatCents(a.priceCents)}</p>
+                <p className="mt-1 text-zinc-600">{fmtDateTime(a.startsAt, tz)} → {fmtTime(a.endsAt, tz)} · {a.durationMinutes} min · {formatCents(a.priceCents)}{visitIsParallel(a.items) && <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-800">serviços ao mesmo tempo</span>}</p>
                 {/* Itens da visita: um por serviço, cada um com profissional e horário próprios (SPEC §11) */}
                 <ul className="mt-3 space-y-1.5 text-sm">
                   {a.items.map((it) => (
