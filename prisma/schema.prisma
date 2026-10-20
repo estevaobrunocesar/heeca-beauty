@@ -102,6 +102,7 @@ model Tenant {
   messages          WhatsappMessage[]
   templates         MessageTemplate[]
   appointmentEvents AppointmentEvent[]
+  appointmentCharges AppointmentCharge[]
   payments          Payment[]
   portfolio         PortfolioItem[]
 
@@ -518,6 +519,7 @@ model Appointment {
   client   Client             @relation(fields: [clientId], references: [id])
   items    AppointmentItem[]
   events   AppointmentEvent[]
+  charges  AppointmentCharge[] // valores adicionais cobrados ao concluir (produtos usados etc.); ficam fora da comissão
   messages WhatsappMessage[]
   payment  Payment?
   assessment Assessment?
@@ -921,4 +923,21 @@ model ClientPackagePayment {
 
   @@index([clientPackageId])
   @@index([tenantId, paidAt])
+}
+
+/// Valor adicional cobrado no atendimento (produto usado, material extra). Lançado ao concluir; não gera comissão
+/// (a comissão é por serviço) e entra no faturamento do mês junto com o valor dos serviços.
+model AppointmentCharge {
+  id            String   @id @default(cuid())
+  tenantId      String
+  appointmentId String
+  description   String
+  amountCents   Int
+  createdAt     DateTime @default(now())
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId])
+  @@index([tenantId, createdAt])
 }

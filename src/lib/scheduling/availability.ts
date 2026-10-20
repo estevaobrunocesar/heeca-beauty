@@ -315,6 +315,29 @@ export function placeVisitParallel(startMinutes: number, items: VisitItem[], ctx
   return placements;
 }
 
+/** Item que a visita já tem (para encaixar serviços a mais sem conflitar com ele). */
+export type ExistingItem = { professionalId: string; roomId: string | null; start: number; end: number; bufferBeforeMinutes: number; bufferAfterMinutes: number; resources: ResourceNeed[] };
+
+/**
+ * Acrescenta serviços a uma visita JÁ marcada, num início escolhido. `ctx` deve vir SEM os itens da própria visita
+ * (como no reagendamento): o intervalo entre atendimentos vale para as outras clientes, não entre os itens da mesma
+ * visita. Os itens que a visita já tem entram aqui: o mesmo profissional não faz dois serviços ao mesmo tempo, e a
+ * sala e os recursos que eles usam não estão livres para os novos no mesmo intervalo.
+ * `parallel`: os novos itens começam juntos em `startMinutes`; senão, em fila a partir dele.
+ */
+export function placeAddedItems(opts: { startMinutes: number; items: VisitItem[]; existing: ExistingItem[]; ctx: PlacementContext; parallel: boolean }): ItemPlacement[] | null {
+  const { ctx } = opts;
+  const own = opts.existing.map((e) => ({ ...e, core: { start: e.start, end: e.end } as MinuteRange, occupied: occupiedRange({ start: e.start, end: e.end }, e) }));
+  const wrapped: PlacementContext = {
+    isProfessionalFree: (pid, range) => ctx.isProfessionalFree(pid, range) && !own.some((e) => e.professionalId === pid && sobrepoe(range, e.core)),
+    isRoomFree: (roomId, range) => ctx.isRoomFree(roomId, range) && !own.some((e) => e.roomId === roomId && sobrepoe(range, e.occupied)),
+    resourceUnitsFree: (resourceId, range) =>
+      ctx.resourceUnitsFree(resourceId, range) -
+      own.filter((e) => sobrepoe(range, e.occupied)).flatMap((e) => e.resources).filter((r) => r.resourceId === resourceId).reduce((n, r) => n + r.quantity, 0),
+  };
+  return (opts.parallel ? placeVisitParallel : placeVisit)(opts.startMinutes, opts.items, wrapped);
+}
+
 /** A visita já gravada é simultânea? (dois itens de profissionais diferentes acontecendo ao mesmo tempo). Usado ao reagendar. */
 export function visitIsParallel(items: { startsAt: Date; endsAt: Date }[]): boolean {
   return items.some((a, i) => items.some((b, j) => j > i && a.startsAt < b.endsAt && b.startsAt < a.endsAt));

@@ -5,9 +5,11 @@ import Link from "next/link";
 import type { AppointmentStatus } from "@/generated/prisma/enums";
 import { setStatusAction } from "@/actions/appointments";
 import { canTransition } from "@/lib/appointments/status";
+import { CompleteDialog } from "./complete-dialog";
 
-export function QuickActions({ id, status, full }: { id: string; status: AppointmentStatus; full?: boolean }) {
+export function QuickActions({ id, status, full, priceCents }: { id: string; status: AppointmentStatus; full?: boolean; priceCents?: number }) {
   const [pending, start] = useTransition();
+  const [concluindo, setConcluindo] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const run = (to: AppointmentStatus, confirmText?: string) => {
@@ -31,7 +33,7 @@ export function QuickActions({ id, status, full }: { id: string; status: Appoint
         </button>
       )}
       {can("COMPLETED") && (
-        <button disabled={pending} className={`${btn} border border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100`} onClick={() => run("COMPLETED")}>Concluído</button>
+        <button disabled={pending} className={`${btn} border border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100`} onClick={() => setConcluindo(true)}>Concluído</button>
       )}
       {can("NO_SHOW") && (
         <button disabled={pending} className={`${btn} border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100`} onClick={() => run("NO_SHOW", "Marcar como não compareceu?")}>Faltou</button>
@@ -40,6 +42,7 @@ export function QuickActions({ id, status, full }: { id: string; status: Appoint
         <button disabled={pending} className={`${btn} text-zinc-600 hover:bg-zinc-100`} onClick={() => run("CANCELLED_BY_PROFESSIONAL", "Cancelar este agendamento? A cliente será avisada por WhatsApp.")}>Cancelar</button>
       )}
       {!full && <Link href={`/app/agendamentos/${id}`} className={`${btn} text-zinc-600 hover:bg-zinc-100`}>Detalhes</Link>}
+      {concluindo && <CompleteDialog id={id} serviceTotalCents={priceCents} onClose={() => setConcluindo(false)} />}
     </div>
   );
 }

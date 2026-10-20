@@ -22,7 +22,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
   const client = await db.client.findFirst({
     where: { id, tenantId: tenant.id },
     include: {
-      appointments: { orderBy: { startsAt: "desc" }, take: 50, include: { items: { orderBy: { sortOrder: "asc" }, select: { serviceName: true } } } },
+      appointments: { orderBy: { startsAt: "desc" }, take: 50, include: { items: { orderBy: { sortOrder: "asc" }, select: { serviceName: true } }, charges: { select: { amountCents: true } } } },
       packages: { orderBy: { createdAt: "desc" }, include: { sessions: { select: { status: true } } } },
     },
   });
@@ -33,7 +33,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
   const now = new Date();
   const completed = client.appointments.filter((a) => a.status === "COMPLETED");
   const completedDates = completed.map((a) => a.startsAt);
-  const spent = completed.reduce((s, a) => s + a.priceCents, 0);
+  const spent = completed.reduce((s, a) => s + a.priceCents + a.charges.reduce((n, c) => n + c.amountCents, 0), 0);
   const noShows = client.appointments.filter((a) => a.status === "NO_SHOW").length;
   const lastVisit = completedDates[0] ?? null; // lista já vem em ordem decrescente
   const observed = averageIntervalDays(completedDates);

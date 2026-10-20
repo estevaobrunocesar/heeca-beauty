@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireAuth, resolveProfessional, type AuthContext } from "@/lib/auth/session";
-import { AppointmentError, createAppointment, MAX_ITEMS_PER_VISIT, reschedule, transition } from "@/lib/appointments/service";
+import { addServiceToAppointment, AppointmentError, completeAppointment, createAppointment, MAX_ITEMS_PER_VISIT, reschedule, transition } from "@/lib/appointments/service";
+import { parseExtras, type ExtraInput } from "@/lib/appointments/charges";
 import { sendAppointmentMessage } from "@/lib/whatsapp/service";
 import type { AppointmentStatus } from "@/generated/prisma/enums";
 import { fail, success, type ActionResult } from "@/lib/action-result";
@@ -135,6 +136,38 @@ export async function createManualAppointmentAction(_prev: ActionResult, formDat
     });
     revalidateAgenda(appt.id);
     return success(appt.id);
+  } catch (e) {
+    return fail(errMessage(e));
+  }
+}
+
+/** Acrescenta um serviço a um agendamento ativo (ex.: a cliente do cabelo decidiu fazer a unha). STAFF só acrescenta serviços do próprio profissional. */
+export async function addServiceAction(input: { appointmentId: string; serviceId: string; professionalId: string; addOnIds: string[]; startMinutes: number }): Promise<ActionResult> {
+  const ctx = await requireAuth();
+  if (!(await loadAccessible(ctx, input.appointmentId))) return fail("Agendamento não encontrado");
+  try {
+    const professional = resolveProfessional(ctx, input.professionalId);
+    await addServiceToAppointment({
+      tenant: ctx.tenant, appointmentId: input.appointmentId, serviceId: input.serviceId, professionalId: professional.id,
+      addOnIds: input.addOnIds, startMinutes: input.startMinutes, actor: "PROFESSIONAL",
+    });
+    revalidateAgenda(input.appointmentId);
+    return success("Serviço acrescentado ao agendamento.");
+  } catch (e) {
+    return fail(errMessage(e));
+  }
+}
+
+/** Conclui o atendimento lançando antes os valores adicionais (produtos usados), se houver. */
+export async function completeAppointmentAction(id: string, extras: ExtraInput[]): Promise<ActionResult> {
+  const ctx = await requireAuth();
+  if (!(await loadAccessible(ctx, id))) return fail("Agendamento não encontrado");
+  const parsed = parseExtras(extras);
+  if (!parsed.ok) return fail(parsed.error);
+  try {
+    await completeAppointment({ appointmentId: id, tenantId: ctx.tenant.id, actor: "PROFESSIONAL", extras: parsed.extras });
+    revalidateAgenda(id);
+    return success();
   } catch (e) {
     return fail(errMessage(e));
   }

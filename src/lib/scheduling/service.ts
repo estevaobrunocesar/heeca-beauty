@@ -3,8 +3,8 @@ import { db } from "@/lib/db";
 import type { Tenant } from "@/generated/prisma/client";
 import { addDaysToKey, dateKeyToDate, weekdayOfKey, zonedDateTimeToUtc, type DateKey } from "@/lib/dates";
 import {
-  buildProfessionalDay, buildResourceDay, buildRoomDay, computeAvailableSlots, computeVisitSlots,
-  type DayException, type ProfessionalDay, type ResourceDay, type RoomDay, type Slot, type UtcRange, type VisitItem, type VisitSlot, type WeeklyRule,
+  buildProfessionalDay, buildResourceDay, buildRoomDay, computeAvailableSlots, computeVisitSlots, contextFromDays, placeAddedItems,
+  type ExistingItem, type ItemPlacement, type DayException, type ProfessionalDay, type ResourceDay, type RoomDay, type Slot, type UtcRange, type VisitItem, type VisitSlot, type WeeklyRule,
 } from "./availability";
 
 /** Status que ocupam horário na agenda. */
@@ -86,6 +86,25 @@ export async function getAvailableSlots(opts: {
     maxConcurrent: tenant.maxConcurrentAppointments,
     maxDailyAppointments: tenant.maxDailyAppointments,
   });
+}
+
+/**
+ * Encaixa serviços a mais numa visita já marcada, começando em `startMinutes` do dia. Ignora os itens da própria visita
+ * no cálculo (eles entram por `existing`). Devolve a alocação de cada item novo ou `null` se não cabe nesse início.
+ */
+export async function placeItemsInVisit(opts: {
+  tenant: TenantRules;
+  items: VisitItem[];
+  existing: ExistingItem[];
+  dateKey: DateKey;
+  startMinutes: number;
+  parallel: boolean;
+  excludeAppointmentId: string;
+}): Promise<ItemPlacement[] | null> {
+  const { tenant, dateKey } = opts;
+  const daysFor = await loadVisitContext({ tenant, items: opts.items, fromKey: dateKey, toKey: dateKey, now: new Date(), excludeAppointmentId: opts.excludeAppointmentId });
+  const ctx = contextFromDays(daysFor(dateKey));
+  return placeAddedItems({ startMinutes: opts.startMinutes, items: opts.items, existing: opts.existing, ctx, parallel: opts.parallel });
 }
 
 /** Para o calendário público: quais dias do intervalo têm ao menos um horário. */

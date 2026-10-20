@@ -4,11 +4,11 @@ import { db } from "@/lib/db";
 import type { Tenant } from "@/generated/prisma/client";
 import type { AppointmentActor, AppointmentSource, AppointmentStatus } from "@/generated/prisma/enums";
 import { parseClientPhone } from "@/lib/phone";
-import { getVisitSlots, occupiedUtc } from "@/lib/scheduling/service";
+import { getVisitSlots, occupiedUtc, placeItemsInVisit } from "@/lib/scheduling/service";
 import { visitIsParallel } from "@/lib/scheduling/availability";
 import { espelharVisita, vincularVisita } from "@/lib/packages/service";
-import type { VisitItem } from "@/lib/scheduling/availability";
-import { zonedDateTimeToUtc } from "@/lib/dates";
+import type { ExistingItem, VisitItem } from "@/lib/scheduling/availability";
+import { minutesToHHMM, toDateKey, toMinutesOfDay, zonedDateTimeToUtc } from "@/lib/dates";
 import { sendAppointmentMessage } from "@/lib/whatsapp/service";
 import { canTransition, ACTIVE_STATUSES } from "./status";
 import { canClientCancel, computeExpiresAt, shouldRefundDeposit } from "./policies";
@@ -475,4 +475,141 @@ export async function settleCommissions(appointmentId: string) {
       return db.appointmentItem.update({ where: { id: it.id }, data: { commissionCents } });
     }),
   );
+}
+
+// ───────────── Acrescentar serviço a um agendamento já marcado ─────────────
+
+const MAX_ITEMS_AFTER_EDIT = 12;
+
+type AddServiceInput = {
+  tenant: Tenant;
+  appointmentId: string;
+  serviceId: string;
+  professionalId: string;
+  addOnIds?: string[];
+  /** Início do novo serviço, em minutos do dia (no fuso do estabelecimento), no mesmo dia do agendamento. */
+  startMinutes: number;
+  actor: AppointmentActor;
+};
+
+/**
+ * Acrescenta um serviço a um agendamento ainda ativo (a cliente decidiu fazer a unha depois do cabelo).
+ * O novo serviço vira mais um item da visita, no profissional e no horário escolhidos, e só entra se couber na agenda
+ * desse profissional (e na sala/recursos): a mesma regra de encaixe de uma reserva nova, sem o intervalo entre atendimentos
+ * em relação aos itens da própria visita. Valor, duração, fim e comissão (apurada ao concluir) acompanham os itens.
+ */
+export async function addServiceToAppointment(input: AddServiceInput) {
+  const { tenant } = input;
+  const tz = tenant.timezone;
+  const appt = await db.appointment.findFirst({
+    where: { id: input.appointmentId, tenantId: tenant.id },
+    include: { items: { orderBy: { sortOrder: "asc" }, include: { resources: { select: { resourceId: true, quantity: true } } } } },
+  });
+  if (!appt) throw new AppointmentError("Agendamento não encontrado.", "NOT_FOUND");
+  if (!ACTIVE_STATUSES.includes(appt.status)) throw new AppointmentError("Só é possível acrescentar serviços a agendamentos ativos, ainda não concluídos.", "NOT_ACTIVE");
+  if (appt.items.length >= MAX_ITEMS_AFTER_EDIT) throw new AppointmentError(`No máximo ${MAX_ITEMS_AFTER_EDIT} serviços por agendamento.`, "TOO_MANY_ITEMS");
+  if (!Number.isInteger(input.startMinutes) || input.startMinutes < 0 || input.startMinutes > 1439) throw new AppointmentError("Horário inválido.", "BAD_TIME");
+
+  const dateKey = toDateKey(appt.startsAt, tz);
+  const [r] = await resolveVisitItems(tenant.id, [{ serviceId: input.serviceId, professionalId: input.professionalId, addOnIds: input.addOnIds }]);
+  const existing: ExistingItem[] = appt.items.map((it) => ({
+    professionalId: it.professionalId, roomId: it.roomId,
+    start: toMinutesOfDay(it.startsAt, tz), end: toMinutesOfDay(it.endsAt, tz),
+    bufferBeforeMinutes: it.bufferBeforeMinutes, bufferAfterMinutes: it.bufferAfterMinutes, resources: it.resources,
+  }));
+  const tentar = (start: number) => placeItemsInVisit({ tenant, items: [r.visitItem], existing, dateKey, startMinutes: start, parallel: false, excludeAppointmentId: appt.id });
+
+  const placements = await tentar(input.startMinutes);
+  if (!placements) {
+    // Ajuda a recepção: o primeiro horário livre a partir do pedido, no mesmo dia.
+    let sugestao: number | null = null;
+    for (let m = input.startMinutes + 5; m < 1440 && sugestao == null; m += 5) if (await tentar(m)) sugestao = m;
+    const nome = (await db.professional.findUnique({ where: { id: input.professionalId }, select: { name: true } }))?.name ?? "O profissional";
+    throw new AppointmentError(
+      sugestao != null
+        ? `${nome} não está livre às ${minutesToHHMM(input.startMinutes)} para esse serviço. O primeiro horário livre é ${minutesToHHMM(sugestao)}.`
+        : `${nome} não tem horário livre para esse serviço a partir das ${minutesToHHMM(input.startMinutes)} neste dia.`,
+      "SLOT_UNAVAILABLE",
+    );
+  }
+  const p = placements[0];
+  const startsAt = zonedDateTimeToUtc(dateKey, p.start, tz);
+  const endsAt = zonedDateTimeToUtc(dateKey, p.end, tz);
+
+  const updated = await db.$transaction(
+    async (tx) => {
+      const created = await tx.appointmentItem.create({
+        data: {
+          tenantId: tenant.id, appointmentId: appt.id,
+          professionalId: p.professionalId, roomId: p.roomId, serviceId: r.service.id,
+          startsAt, endsAt, sortOrder: Math.max(-1, ...appt.items.map((i) => i.sortOrder)) + 1,
+          serviceName: r.serviceName, durationMinutes: r.durationMinutes, priceCents: r.priceCents,
+          bufferBeforeMinutes: r.visitItem.bufferBeforeMinutes ?? 0, bufferAfterMinutes: r.visitItem.bufferAfterMinutes ?? 0,
+          addOns: { create: r.addOns.map((a) => ({ serviceId: a.id, name: a.name, durationMinutes: a.durationMinutes, priceCents: a.priceCents })) },
+          resources: { create: (r.visitItem.resources ?? []).map((n) => ({ resourceId: n.resourceId, quantity: n.quantity })) },
+        },
+      });
+      // Proteção contra corrida (outra recepção marcando o mesmo profissional/sala ao mesmo tempo).
+      const concorrentes = await tx.appointmentItem.count({
+        where: { professionalId: p.professionalId, id: { not: created.id }, appointmentId: { not: appt.id }, appointment: { status: { in: ACTIVE_STATUSES } }, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
+      });
+      if (concorrentes >= tenant.maxConcurrentAppointments) throw new AppointmentError("Este horário acabou de ser reservado por outra pessoa.", "SLOT_UNAVAILABLE");
+      if (p.roomId) {
+        const ocupada = occupiedUtc(created);
+        const outras = await tx.appointmentItem.findMany({
+          where: { roomId: p.roomId, id: { not: created.id }, appointment: { status: { in: ACTIVE_STATUSES } }, startsAt: { lt: new Date(ocupada.endsAt.getTime() + 86_400_000) }, endsAt: { gt: new Date(ocupada.startsAt.getTime() - 86_400_000) } },
+          select: { startsAt: true, endsAt: true, bufferBeforeMinutes: true, bufferAfterMinutes: true },
+        });
+        if (outras.some((o) => { const oc = occupiedUtc(o); return oc.startsAt < ocupada.endsAt && oc.endsAt > ocupada.startsAt; })) {
+          throw new AppointmentError("Esta sala acabou de ser reservada por outra pessoa.", "SLOT_UNAVAILABLE");
+        }
+      }
+      const todos = await tx.appointmentItem.findMany({ where: { appointmentId: appt.id }, orderBy: { sortOrder: "asc" }, select: { serviceName: true, startsAt: true, endsAt: true } });
+      const inicio = new Date(Math.min(...todos.map((i) => i.startsAt.getTime())));
+      const fim = new Date(Math.max(...todos.map((i) => i.endsAt.getTime())));
+      return tx.appointment.update({
+        where: { id: appt.id },
+        data: {
+          startsAt: inicio, endsAt: fim,
+          serviceName: describeVisit(todos),
+          priceCents: { increment: r.priceCents },
+          // Do primeiro início ao último fim: vale para visita em fila e para visita com serviços ao mesmo tempo.
+          durationMinutes: Math.round((fim.getTime() - inicio.getTime()) / 60_000),
+          events: { create: { tenantId: tenant.id, actor: input.actor, type: "ITEMS_ADDED", data: { serviceName: r.serviceName, professionalId: p.professionalId, startsAt: startsAt.toISOString(), priceCents: r.priceCents } } },
+        },
+      });
+    },
+    { isolationLevel: "Serializable" },
+  );
+  // Plano de sessões ativo da cliente que cubra o serviço novo: reserva a sessão.
+  await vincularVisita(tenant, appt.id);
+  return updated;
+}
+
+// ───────────── Concluir com valores adicionais ─────────────
+
+/**
+ * Conclui o atendimento e lança, antes, os valores adicionais (produtos usados). A comissão é apurada só sobre os
+ * serviços (`settleCommissions`); os adicionais entram no faturamento. Se a conclusão falhar, os adicionais não ficam.
+ */
+export async function completeAppointment(input: { appointmentId: string; tenantId: string; actor: AppointmentActor; extras: { description: string; amountCents: number }[] }) {
+  const appt = await db.appointment.findFirst({ where: { id: input.appointmentId, tenantId: input.tenantId }, select: { id: true, status: true } });
+  if (!appt) throw new AppointmentError("Agendamento não encontrado.", "NOT_FOUND");
+  if (!canTransition(input.actor, appt.status, "COMPLETED")) throw new AppointmentError("Este agendamento não pode ser concluído agora.", "BAD_TRANSITION");
+
+  const created = input.extras.length
+    ? await db.$transaction(input.extras.map((e) => db.appointmentCharge.create({ data: { tenantId: input.tenantId, appointmentId: appt.id, description: e.description, amountCents: e.amountCents } })))
+    : [];
+  try {
+    await transition({ appointmentId: appt.id, tenantId: input.tenantId, actor: input.actor, to: "COMPLETED" });
+  } catch (e) {
+    if (created.length) await db.appointmentCharge.deleteMany({ where: { id: { in: created.map((c) => c.id) } } });
+    throw e;
+  }
+  if (created.length) {
+    await db.appointmentEvent.create({
+      data: { tenantId: input.tenantId, appointmentId: appt.id, actor: input.actor, type: "CHARGES_ADDED", data: { count: created.length, totalCents: created.reduce((n, c) => n + c.amountCents, 0) } },
+    });
+  }
+  return created;
 }

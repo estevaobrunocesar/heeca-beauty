@@ -44,12 +44,12 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
   const { marca, segmentos, ficha } = perfilDoTenant(tenant);
   const horaLocal = Number(fmtDate(now, tz, "H"));
 
-  const [todayList, ontem, mes, mesAnterior, concluidosMes, itensMes, clientesAtivas, clientesAtivasAntes, faltasMes, recentCompleted, mensagens, itensSemana, regras, servicesCount, proximo, upcomingIds] = await Promise.all([
+  const [todayList, ontem, mes, mesAnterior, concluidosMes, itensMes, clientesAtivas, clientesAtivasAntes, faltasMes, recentCompleted, mensagens, itensSemana, regras, servicesCount, proximo, upcomingIds, extrasMes, extrasAnterior] = await Promise.all([
     db.appointment.findMany({ where: { ...scope, startsAt: { gte: dayStart, lt: dayEnd } }, include: { client: { select: { id: true, name: true } }, items: { orderBy: { sortOrder: "asc" }, select: { serviceName: true, professional: { select: { name: true } } } } }, orderBy: { startsAt: "asc" } }),
     db.appointment.count({ where: { ...scope, startsAt: { gte: zonedDateTimeToUtc(addDaysToKey(today, -1), 0, tz), lt: dayStart }, status: { notIn: ["CANCELLED_BY_CLIENT", "CANCELLED_BY_PROFESSIONAL"] } } }),
     db.appointment.aggregate({ where: { ...scope, status: "COMPLETED", startsAt: { gte: monthStart } }, _count: true, _sum: { priceCents: true } }),
     db.appointment.aggregate({ where: { ...scope, status: "COMPLETED", startsAt: { gte: prevMonthStart, lt: monthStart } }, _count: true, _sum: { priceCents: true } }),
-    db.appointment.findMany({ where: { ...scope, status: "COMPLETED", startsAt: { gte: monthStart } }, select: { startsAt: true, priceCents: true } }),
+    db.appointment.findMany({ where: { ...scope, status: "COMPLETED", startsAt: { gte: monthStart } }, select: { startsAt: true, priceCents: true, charges: { select: { amountCents: true } } } }),
     db.appointmentItem.findMany({ where: { tenantId: tenant.id, professionalId: { in: proIds }, startsAt: { gte: monthStart }, appointment: { status: "COMPLETED" } }, select: { service: { select: { category: { select: { name: true } } } } } }),
     db.appointment.findMany({ where: { ...scope, status: "COMPLETED", startsAt: { gte: since90 } }, distinct: ["clientId"], select: { clientId: true } }),
     db.appointment.findMany({ where: { ...scope, status: "COMPLETED", startsAt: { gte: new Date(since90.getTime() - 90 * DIA), lt: since90 } }, distinct: ["clientId"], select: { clientId: true } }),
@@ -61,16 +61,19 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
     db.service.count({ where: { tenantId: tenant.id, active: true, deletedAt: null, isAddOn: false } }),
     db.appointment.findFirst({ where: { ...scope, endsAt: { gt: now }, status: { in: ACTIVE_STATUSES } }, orderBy: { startsAt: "asc" }, include: { client: { select: { id: true, name: true, ficha: true } }, items: { orderBy: { sortOrder: "asc" }, select: { serviceName: true, professional: { select: { name: true, photoUrl: true } } } } } }),
     db.appointment.findMany({ where: { ...scope, startsAt: { gte: now }, status: { in: ACTIVE_STATUSES } }, select: { clientId: true } }),
+    // Valores adicionais (produtos usados) lançados ao concluir: entram no faturamento, fora da comissão.
+    db.appointmentCharge.aggregate({ where: { tenantId: tenant.id, appointment: { ...scope, status: "COMPLETED", startsAt: { gte: monthStart } } }, _sum: { amountCents: true } }),
+    db.appointmentCharge.aggregate({ where: { tenantId: tenant.id, appointment: { ...scope, status: "COMPLETED", startsAt: { gte: prevMonthStart, lt: monthStart } } }, _sum: { amountCents: true } }),
   ]);
 
   // Série do mês por dia (faturamento concluído), até hoje
   const hojeDia = Number(today.slice(8, 10));
   const porDia = new Map<number, number>();
-  for (const a of concluidosMes) { const d = Number(toDateKey(a.startsAt, tz).slice(8, 10)); porDia.set(d, (porDia.get(d) ?? 0) + a.priceCents); }
+  for (const a of concluidosMes) { const d = Number(toDateKey(a.startsAt, tz).slice(8, 10)); porDia.set(d, (porDia.get(d) ?? 0) + a.priceCents + a.charges.reduce((n, c) => n + c.amountCents, 0)); }
   const mesAbrev = fmtDate(monthStart, tz, "MMM").replace(".", "");
   const serie = Array.from({ length: hojeDia }, (_, i) => ({ rotulo: `${i + 1} ${mesAbrev}`, valor: (porDia.get(i + 1) ?? 0) / 100 }));
   const ultimos7 = (f: (k: string) => number) => { const out: number[] = []; for (let i = 6; i >= 0; i--) out.push(f(toDateKey(new Date(now.getTime() - i * DIA), tz))); return out; };
-  const sparkFat = ultimos7((k) => concluidosMes.filter((a) => toDateKey(a.startsAt, tz) === k).reduce((n, a) => n + a.priceCents, 0));
+  const sparkFat = ultimos7((k) => concluidosMes.filter((a) => toDateKey(a.startsAt, tz) === k).reduce((n, a) => n + a.priceCents + a.charges.reduce((m, c) => m + c.amountCents, 0), 0));
   const sparkAtend = ultimos7((k) => recentCompleted.filter((a) => toDateKey(a.startsAt, tz) === k).length);
 
   // Rosca: itens concluídos no mês por categoria
@@ -94,7 +97,7 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
   const pedirSegmentos = ctx.canManage && !escolheuSegmentos(marca, tenant);
 
   const ativosHoje = todayList.filter((a) => ACTIVE_STATUSES.includes(a.status) || a.status === "COMPLETED");
-  const fatMes = mes._sum.priceCents ?? 0, fatAnterior = mesAnterior._sum.priceCents ?? 0;
+  const fatMes = (mes._sum.priceCents ?? 0) + (extrasMes._sum.amountCents ?? 0), fatAnterior = (mesAnterior._sum.priceCents ?? 0) + (extrasAnterior._sum.amountCents ?? 0);
   const deltaFat = fatAnterior > 0 ? Math.round(((fatMes - fatAnterior) / fatAnterior) * 100) : null;
   const ticketMedio = mes._count > 0 ? Math.round(fatMes / mes._count) : 0;
   const meta = tenant.metaMensalCents;

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { requireAuth } from "@/lib/auth/session";
-import { fmtDateTime, fmtTime, todayKey, toDateKey } from "@/lib/dates";
+import { activeProfessionals, requireAuth } from "@/lib/auth/session";
+import { fmtDateTime, fmtTime, todayKey, toDateKey, toMinutesOfDay } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import { formatPhone, whatsappLink } from "@/lib/phone";
 import { STATUS_LABELS, isActive } from "@/lib/appointments/status";
@@ -16,6 +16,7 @@ import { perfilDoTenant } from "@/lib/marca-atual";
 import { lerFicha, resumoFicha } from "@/lib/clients/ficha";
 import { moduloClinicoAtivo } from "@/lib/treatments/rules";
 import { visitIsParallel } from "@/lib/scheduling/availability";
+import { AddServiceCard } from "./add-service";
 import { SessionEvolution } from "../../pacotes/[id]/clinical-tools";
 
 export default async function AppointmentDetailPage({ params }: PageProps<"/app/agendamentos/[id]">) {
@@ -29,12 +30,28 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
     include: {
       items: { orderBy: { sortOrder: "asc" }, include: { professional: { select: { id: true, name: true, photoUrl: true } }, room: { select: { name: true } }, addOns: true, packageSession: { select: { id: true, status: true, productsUsed: true, evolution: true, clientPackage: { select: { id: true, name: true } } } } } },
       events: { orderBy: { createdAt: "asc" } },
+      charges: { orderBy: { createdAt: "asc" } },
       messages: { orderBy: { createdAt: "desc" } },
       payment: true,
       client: { include: { _count: { select: { appointments: true } } } },
     },
   });
   if (!a) notFound();
+  // Acrescentar serviço: só enquanto o agendamento está ativo. A equipe vem do mesmo escopo do agendamento manual.
+  const podeAcrescentar = isActive(a.status);
+  const [servicosAtivos, equipe] = podeAcrescentar
+    ? await Promise.all([
+        db.service.findMany({ where: { tenantId: tenant.id, active: true, deletedAt: null }, orderBy: { sortOrder: "asc" }, include: { professionals: { select: { professionalId: true } } } }),
+        Promise.resolve(activeProfessionals(ctx)),
+      ])
+    : [[], []];
+  const agoraMin = toMinutesOfDay(new Date(), tz);
+  const inicioVisita = toMinutesOfDay(a.startsAt, tz);
+  const arredonda5 = (m: number) => Math.min(1435, Math.ceil(m / 5) * 5);
+  const mesmoDia = toDateKey(a.startsAt, tz) === todayKey(tz);
+  const startNow = arredonda5(mesmoDia ? Math.max(inicioVisita, agoraMin) : inicioVisita);
+  const startAfter = arredonda5(toMinutesOfDay(a.endsAt, tz));
+  const totalAdicionais = a.charges.reduce((n, c) => n + c.amountCents, 0);
   const { segmentos, ficha: campos } = perfilDoTenant(tenant);
   const grupos = Object.fromEntries(segmentos.map((s) => [s.slug, s.nome]));
   const fichaAtual = lerFicha(a.client.ficha, campos);
@@ -75,6 +92,15 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
                     </li>
                   ))}
                 </ul>
+                {a.charges.length > 0 && (
+                  <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm">
+                    <p className="font-medium text-amber-900">Valores adicionais</p>
+                    <ul className="mt-1 space-y-0.5 text-amber-900">
+                      {a.charges.map((c) => <li key={c.id} className="flex justify-between gap-3"><span>{c.description}</span><span className="tabular-nums">{formatCents(c.amountCents)}</span></li>)}
+                    </ul>
+                    <p className="mt-1 flex justify-between border-t border-amber-200 pt-1 font-medium text-amber-950"><span>Total com adicionais</span><span className="tabular-nums">{formatCents(a.priceCents + totalAdicionais)}</span></p>
+                  </div>
+                )}
               </div>
               <StatusBadge status={a.status} className="text-sm" />
             </div>
@@ -85,9 +111,20 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
             )}
             {a.notes && <p className="mt-3 rounded-lg bg-zinc-50 px-3 py-2 text-sm text-zinc-700"><span className="font-medium">Observação da cliente:</span> {a.notes}</p>}
             <div className="mt-4 border-t border-zinc-100 pt-4">
-              <QuickActions id={a.id} status={a.status} full />
+              <QuickActions id={a.id} status={a.status} priceCents={a.priceCents} full />
             </div>
           </section>
+
+          {podeAcrescentar && equipe.length > 0 && (
+            <AddServiceCard
+              appointmentId={a.id}
+              professionals={equipe.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photoUrl }))}
+              services={servicosAtivos.filter((x) => !x.isAddOn).map((x) => ({ id: x.id, name: x.name, durationMinutes: x.durationMinutes, priceCents: x.priceCents, professionalIds: x.professionals.map((p) => p.professionalId) }))}
+              addOns={servicosAtivos.filter((x) => x.isAddOn).map((x) => ({ id: x.id, name: x.name, durationMinutes: x.durationMinutes, priceCents: x.priceCents }))}
+              startNow={startNow}
+              startAfter={startAfter}
+            />
+          )}
 
           <DetailTools
             id={a.id}
@@ -111,6 +148,8 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
                     {e.type === "CREATED" && `Criado (${e.toStatus ? STATUS_LABELS[e.toStatus] : ""})`}
                     {e.type === "STATUS_CHANGED" && `${e.fromStatus ? STATUS_LABELS[e.fromStatus] : "?"} → ${e.toStatus ? STATUS_LABELS[e.toStatus] : "?"}`}
                     {e.type === "RESCHEDULED" && "Reagendado"}
+                    {e.type === "ITEMS_ADDED" && `Serviço acrescentado: ${(e.data as { serviceName?: string } | null)?.serviceName ?? ""}`}
+                    {e.type === "CHARGES_ADDED" && `Valores adicionais lançados: ${formatCents((e.data as { totalCents?: number } | null)?.totalCents ?? 0)}`}
                     <span className="ml-1 text-xs text-zinc-400">· {e.actor === "CLIENT" ? "cliente" : e.actor === "PROFESSIONAL" ? "você" : "sistema"}</span>
                   </span>
                 </li>

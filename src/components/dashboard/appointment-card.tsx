@@ -71,7 +71,7 @@ export function AppointmentCard({ appointment: a, tz, compact, showProfessional 
         )}
         {a.notes && <p className="mt-1 text-xs text-zinc-500">Obs.: {a.notes}</p>}
       </div>
-      <QuickActions id={a.id} status={a.status} />
+      <QuickActions id={a.id} status={a.status} priceCents={a.priceCents} />
     </div>
   );
 }

@@ -135,3 +135,15 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 **Sem migração.** O modo não é gravado: ele é inferido dos itens (`visitIsParallel`: dois itens sobrepostos), e é assim que o reagendamento mantém a visita simultânea. `Appointment.durationMinutes` passa a ser o tempo total (início ao último fim) nas visitas simultâneas; preço e comissão seguem por item, sem mudança.
 
 **Descartado.** (1) Só uma estimativa manual de tempo (um bloco para todos): bloquearia todos os profissionais pelo tempo inteiro e não saberia quem faz o quê. (2) Gravar um campo `parallel`: o dado já está nos itens, e um campo poderia divergir deles. (3) Liberar na página pública: a cliente escolheria combinações que a recepção ainda não validou; fica para uma decisão futura.
+
+## 2026-10-21 — Acrescentar serviços a um agendamento e valores adicionais ao concluir (pedido do Studio21)
+
+**Contexto.** A cliente marca o cabelo e, na hora, decide fazer a unha; e alguns procedimentos têm cobrança de produto usado, que a recepção precisava lançar ao concluir.
+
+**Acrescentar serviço.** Na página do agendamento (só enquanto ele está ativo, não concluído), o cartão "Acrescentar serviço" cria mais um item da visita: profissional, serviço, adicionais e horário de início (sugeridos "agora, ao mesmo tempo" e "depois do último serviço", ajustáveis). O encaixe usa o mesmo motor da reserva (`placeAddedItems`): o profissional precisa estar livre, e sala e recursos também; os itens da própria visita não geram o intervalo entre atendimentos (só valem para outras clientes), mas o mesmo profissional nunca faz dois serviços ao mesmo tempo. Não cabendo, a tela diz o primeiro horário livre. Valor, duração (início ao último fim), fim da visita e nome do agendamento acompanham os itens; a comissão é apurada ao concluir, como sempre, e o plano de sessões da cliente é reavaliado. STAFF só acrescenta serviços do próprio profissional. Fica registrado no histórico (`ITEMS_ADDED`). Vale para todos os estabelecimentos (não é opção do Studio21).
+
+**Valores adicionais.** Ao clicar em "Concluído" abre o diálogo "Houve valores adicionais?" (Não/Sim, com várias linhas de observação e valor). A conclusão lança os adicionais e conclui (se a conclusão falhar, os adicionais não ficam). Tabela nova `AppointmentCharge`. **Fora da comissão** (a comissão é por serviço) e **dentro do faturamento**: o painel do mês, a série do gráfico e o "total gasto" da cliente somam serviços + adicionais; o detalhe mostra "Total com adicionais". Histórico `CHARGES_ADDED`.
+
+**Descartado.** (1) Editar/remover serviços já marcados: não foi pedido; fica como evolução. (2) Gravar os adicionais em `Appointment.priceCents`: misturaria produto com serviço e a comissão passaria a incidir sobre ele. (3) Adicionais depois de concluído: por ora só no ato de concluir. (4) Opção só do Studio21: o recurso é geral.
+
+**Consequência.** Migração aditiva `20261021120000_appointment_charges` (cria `AppointmentCharge`). `AppointmentEvent.type` é texto livre, então os dois tipos de evento novos não pedem migração.
