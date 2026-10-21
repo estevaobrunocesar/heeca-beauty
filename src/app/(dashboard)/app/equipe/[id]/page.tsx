@@ -15,10 +15,11 @@ export default async function ProfessionalPage({ params }: PageProps<"/app/equip
   if (!pro) notFound();
   if (!ctx.canManage && ctx.user.professional?.id !== id) redirect("/app");
 
-  const [services, rules, user] = await Promise.all([
+  const [services, rules, user, units] = await Promise.all([
     db.service.findMany({ where: { tenantId: ctx.tenant.id, deletedAt: null }, orderBy: { sortOrder: "asc" }, include: { professionals: { where: { professionalId: id }, select: { professionalId: true, commissionPercent: true } } } }),
     db.availabilityRule.findMany({ where: { professionalId: id } }),
     pro.userId ? db.user.findUnique({ where: { id: pro.userId }, select: { email: true, role: true } }) : null,
+    db.unit.findMany({ where: { tenantId: ctx.tenant.id, active: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
   ]);
 
   const days: DayValue[] = Array.from({ length: 7 }, (_, weekday) => {
@@ -42,7 +43,8 @@ export default async function ProfessionalPage({ params }: PageProps<"/app/equip
           <ProfileForm
             id={pro.id}
             canManage={ctx.canManage}
-            initial={{ name: pro.name, bio: pro.bio ?? "", photoUrl: pro.photoUrl ?? "", phone: pro.phone ?? "", email: pro.email ?? "", specialties: pro.specialties ?? "", commissionPercent: pro.commissionPercent, active: pro.active }}
+            initial={{ name: pro.name, bio: pro.bio ?? "", photoUrl: pro.photoUrl ?? "", phone: pro.phone ?? "", email: pro.email ?? "", specialties: pro.specialties ?? "", commissionPercent: pro.commissionPercent, active: pro.active, unitId: pro.unitId ?? "" }}
+            units={units}
             services={services.map((s) => ({ id: s.id, name: s.name, active: s.active, checked: s.professionals.length > 0, commissionPercent: s.professionals[0]?.commissionPercent ?? null }))}
           />
         </div>

@@ -26,6 +26,7 @@ async function loadTenant(slug: string) {
         where: { active: true }, orderBy: { sortOrder: "asc" },
         include: { services: { select: { serviceId: true } }, availability: { orderBy: { weekday: "asc" } } },
       },
+      units: { where: { active: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true, address: true } },
       portfolio: { where: { visible: true }, orderBy: [{ sortOrder: "asc" }, { publishedAt: "desc" }], take: 24, include: { category: { select: { name: true } } } },
       packages: { where: { active: true, onlineVisible: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, description: true, sessionsCount: true, validityDays: true, priceCents: true } },
     },
@@ -263,7 +264,8 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
                 requirePolicyAcceptance={tenant.requirePolicyAcceptance && hasPolicies(tenant)}
                 policies={policies}
                 categories={tenant.categories}
-                professionals={tenant.professionals.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photoUrl, bio: p.bio, serviceIds: p.services.map((s) => s.serviceId) }))}
+                professionals={tenant.professionals.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photoUrl, bio: p.bio, unitId: p.unitId, serviceIds: p.services.map((s) => s.serviceId) }))}
+                units={tenant.units.length >= 2 ? tenant.units : []}
                 services={main.map((s) => ({
                   id: s.id, name: s.name, categoryId: s.categoryId, description: s.description, clientNotes: s.clientNotes,
                   durationMinutes: s.durationMinutes, priceCents: s.priceCents, imageUrl: s.imageUrl,

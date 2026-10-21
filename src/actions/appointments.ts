@@ -11,6 +11,7 @@ import type { AppointmentStatus } from "@/generated/prisma/enums";
 import { fail, success, type ActionResult } from "@/lib/action-result";
 import { perfilDoTenant } from "@/lib/marca-atual";
 import { fichaBruta, fichaDoForm, mesclarFicha } from "@/lib/clients/ficha";
+import { isMethod } from "@/lib/finance/rules";
 
 function revalidateAgenda(id?: string) {
   revalidatePath("/app");
@@ -159,13 +160,13 @@ export async function addServiceAction(input: { appointmentId: string; serviceId
 }
 
 /** Conclui o atendimento lançando antes os valores adicionais (produtos usados), se houver. */
-export async function completeAppointmentAction(id: string, extras: ExtraInput[]): Promise<ActionResult> {
+export async function completeAppointmentAction(id: string, extras: ExtraInput[], paymentMethod?: string | null): Promise<ActionResult> {
   const ctx = await requireAuth();
   if (!(await loadAccessible(ctx, id))) return fail("Agendamento não encontrado");
   const parsed = parseExtras(extras);
   if (!parsed.ok) return fail(parsed.error);
   try {
-    await completeAppointment({ appointmentId: id, tenantId: ctx.tenant.id, actor: "PROFESSIONAL", extras: parsed.extras });
+    await completeAppointment({ appointmentId: id, tenantId: ctx.tenant.id, actor: "PROFESSIONAL", extras: parsed.extras, paymentMethod: isMethod(paymentMethod) ? paymentMethod : null });
     revalidateAgenda(id);
     return success();
   } catch (e) {

@@ -15,15 +15,18 @@ import { progresso, STATUS_PACOTE } from "@/lib/packages/rules";
 import { regraFaltaDe } from "@/lib/packages/service";
 import { describeVisit } from "@/lib/appointments/summary";
 import { ClientForm } from "./client-form";
+import { CashbackCard } from "./cashback-card";
+import { saldoDoCashback } from "@/lib/loyalty/rules";
 
 export default async function ClientDetailPage({ params }: PageProps<"/app/clientes/[id]">) {
   const { id } = await params;
-  const { tenant } = await requireAuth();
+  const { tenant, canManage } = await requireAuth();
   const client = await db.client.findFirst({
     where: { id, tenantId: tenant.id },
     include: {
       appointments: { orderBy: { startsAt: "desc" }, take: 50, include: { items: { orderBy: { sortOrder: "asc" }, select: { serviceName: true } }, charges: { select: { amountCents: true } } } },
       packages: { orderBy: { createdAt: "desc" }, include: { sessions: { select: { status: true } } } },
+      cashbackEntries: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!client) notFound();
@@ -87,6 +90,14 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
             </div>
           )}
           {noShows > 0 && <p className="text-xs text-rose-600">⚠️ {noShows} falta(s) registrada(s).</p>}
+
+          {(tenant.cashbackPercent > 0 || client.cashbackEntries.length > 0) && (
+            <CashbackCard
+              clientId={client.id} percent={tenant.cashbackPercent} canAdjust={canManage}
+              saldoCents={saldoDoCashback(client.cashbackEntries)}
+              linhas={client.cashbackEntries.slice(0, 8).map((e) => ({ id: e.id, when: fmtDate(e.createdAt, tenant.timezone), label: e.kind, note: e.note, cents: e.amountCents }))}
+            />
+          )}
 
           {pacotes.length > 0 && (
             <section className="card p-5">

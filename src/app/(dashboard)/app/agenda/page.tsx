@@ -13,6 +13,7 @@ import { ScheduleManager } from "./schedule-manager";
 import type { AppointmentStatus } from "@/generated/prisma/enums";
 import { cardInclude, withProfessionals } from "@/lib/appointments/queries";
 import { RoomDayView, type RoomColumn } from "./room-day-view";
+import { valeNaUnidade } from "@/lib/units/rules";
 
 export const metadata: Metadata = { title: "Agenda" };
 
@@ -29,7 +30,10 @@ export default async function AgendaPage({ searchParams }: PageProps<"/app/agend
   const date = typeof sp.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : today;
 
   // Filtro de profissional: OWNER vê todos por padrão; STAFF só o próprio.
-  const team = ctx.professionals;
+  // Unidades (filiais): com 2+ ativas, a agenda pode ser filtrada por unidade; o filtro restringe a equipe mostrada.
+  const units = ctx.seesTeam ? await db.unit.findMany({ where: { tenantId: tenant.id, active: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }) : [];
+  const unit = units.length >= 2 && typeof sp.unidade === "string" ? units.find((u) => u.id === sp.unidade) ?? null : null;
+  const team = ctx.professionals.filter((p) => valeNaUnidade(p.unitId, unit?.id));
   const showTeam = ctx.seesTeam && team.length > 1;
   const requestedPro = typeof sp.pro === "string" ? team.find((p) => p.id === sp.pro) : undefined;
   const selected = ctx.seesTeam ? requestedPro ?? null : ctx.professional; // null = todos
@@ -102,8 +106,9 @@ export default async function AgendaPage({ searchParams }: PageProps<"/app/agend
   const prev = view === "month" ? format(new Date(dateKeyToDate(date).setMonth(dateKeyToDate(date).getMonth() - 1)), "yyyy-MM-dd") : addDaysToKey(date, -step);
   const next = view === "month" ? format(new Date(dateKeyToDate(date).setMonth(dateKeyToDate(date).getMonth() + 1)), "yyyy-MM-dd") : addDaysToKey(date, step);
   const proQ = selected && ctx.seesTeam ? `&pro=${selected.id}` : "";
+  const unitQ = unit ? `&unidade=${unit.id}` : "";
   const href = (v: View, d: string, pro: string | null | undefined = undefined) =>
-    `/app/agenda?view=${v}&date=${d}${pro === undefined ? proQ : pro ? `&pro=${pro}` : ""}`;
+    `/app/agenda?view=${v}&date=${d}${pro === undefined ? proQ : pro ? `&pro=${pro}` : ""}${unitQ}`;
   const showProOnCards = !selected && team.length > 1;
 
   const title =
@@ -117,6 +122,16 @@ export default async function AgendaPage({ searchParams }: PageProps<"/app/agend
         title="Agenda"
         actions={<Link href={`/app/agenda/novo${selected ? `?pro=${selected.id}` : ""}`} className="btn-primary">+ Agendar</Link>}
       />
+
+      {units.length >= 2 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-zinc-500">Unidade:</span>
+          <Link href={`/app/agenda?view=${view}&date=${date}`} className={`btn px-3 py-1.5 ${!unit ? "bg-zinc-900 text-white" : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"}`}>Todas</Link>
+          {units.map((u) => (
+            <Link key={u.id} href={`/app/agenda?view=${view}&date=${date}&unidade=${u.id}`} className={`btn px-3 py-1.5 ${unit?.id === u.id ? "bg-zinc-900 text-white" : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"}`}>{u.name}</Link>
+          ))}
+        </div>
+      )}
 
       {showTeam && (
         <div className="mb-4 flex flex-wrap gap-2">

@@ -80,6 +80,10 @@ export async function updateProfessionalAction(id: string, _prev: ActionResult, 
   const photo = guardImageUrl(ctx.tenant.id, d.photoUrl, before.photoUrl);
   if (!photo.ok) return fail(IMAGE_REJECTED);
 
+  // Unidade onde atende (só quando o formulário a envia): vazio = qualquer unidade; precisa ser do estabelecimento.
+  const unitRaw = String(formData.get("unitId") ?? "").trim();
+  const unitId = unitRaw ? (await db.unit.findFirst({ where: { id: unitRaw, tenantId: ctx.tenant.id }, select: { id: true } }))?.id ?? null : null;
+
   // STAFF edita só perfil; ativar/desativar, serviços e comissões são do responsável.
   const serviceIds = formData.getAll("serviceIds").map(String);
   // Comissão específica por serviço (SPEC §17): campo "commission_<serviceId>", vazio = herda a do profissional.
@@ -96,6 +100,7 @@ export async function updateProfessionalAction(id: string, _prev: ActionResult, 
         name: d.name, bio: d.bio || null, photoUrl: photo.url,
         phone: d.phone || null, email: d.email || null, specialties: d.specialties || null,
         ...(ctx.canManage ? { active: d.active ?? false, commissionPercent: pct(d.commissionPercent) } : {}),
+        ...(ctx.canManage && formData.has("unitId") ? { unitId: unitId } : {}),
       },
     });
     if (ctx.canManage) {

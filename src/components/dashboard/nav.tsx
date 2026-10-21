@@ -7,12 +7,17 @@ import { useState } from "react";
 export type NavRole = "OWNER" | "MANAGER" | "RECEPTION" | "STAFF";
 
 // Quem vê cada item (SPEC §6). "manage" = dono e gerente; "semRecepcao" = todos menos recepção (comissões e módulo clínico).
-const items: { href: string; label: string; icon: (p: IconProps) => React.JSX.Element; access: "all" | "manage" | "semRecepcao"; opcional?: "salas" | "clinico" }[] = [
+const items: { href: string; label: string; icon: (p: IconProps) => React.JSX.Element; access: "all" | "manage" | "semRecepcao" | "equipe"; opcional?: "salas" | "clinico" }[] = [
   { href: "/app", label: "Início", icon: HomeIcon, access: "all" },
   { href: "/app/agenda", label: "Agenda", icon: CalendarIcon, access: "all" },
   { href: "/app/servicos", label: "Serviços", icon: ServicesIcon, access: "manage" },
   { href: "/app/clientes", label: "Clientes", icon: UsersIcon, access: "all" },
   { href: "/app/comissoes", label: "Comissões", icon: CommissionIcon, access: "semRecepcao" },
+  { href: "/app/financeiro", label: "Financeiro", icon: MoneyIcon, access: "manage" },
+  { href: "/app/caixa", label: "Caixa", icon: CashIcon, access: "equipe" },
+  { href: "/app/campanhas", label: "Campanhas", icon: CampaignIcon, access: "equipe" },
+  { href: "/app/relatorios", label: "Relatórios", icon: ReportIcon, access: "manage" },
+  { href: "/app/estoque", label: "Estoque", icon: StockIcon, access: "manage" },
   { href: "/app/salas", label: "Salas", icon: RoomIcon, access: "manage", opcional: "salas" },
   { href: "/app/pacotes", label: "Pacotes", icon: PackageIcon, access: "manage" },
   { href: "/app/avaliacoes", label: "Avaliações", icon: AssessmentIcon, access: "semRecepcao", opcional: "clinico" },
@@ -26,7 +31,7 @@ export function DashboardNav({ variant, role, salas = false, clinico = false }: 
   const canManage = role === "OWNER" || role === "MANAGER";
   const visible = items
     .filter((i) => !i.opcional || (i.opcional === "salas" && salas) || (i.opcional === "clinico" && clinico))
-    .filter((i) => i.access === "all" || (i.access === "manage" && canManage) || (i.access === "semRecepcao" && role !== "RECEPTION"));
+    .filter((i) => i.access === "all" || (i.access === "manage" && canManage) || (i.access === "semRecepcao" && role !== "RECEPTION") || (i.access === "equipe" && role !== "STAFF"));
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/app" ? pathname === "/app" : pathname.startsWith(href));
 
@@ -110,6 +115,26 @@ function HomeIcon(p: IconProps) {
 function CommissionIcon(p: IconProps) {
   // Cifrão em círculo
   return <svg {...base} {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v10M14.5 9.5c0-1-1.1-1.7-2.5-1.7s-2.5.7-2.5 1.7 1.1 1.5 2.5 1.7 2.5.8 2.5 1.8-1.1 1.7-2.5 1.7-2.5-.7-2.5-1.7" /></svg>;
+}
+function CampaignIcon(p: IconProps) {
+  // Megafone
+  return <svg {...base} {...p}><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a4 4 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11" /></svg>;
+}
+function MoneyIcon(p: IconProps) {
+  // Carteira
+  return <svg {...base} {...p}><path d="M3 7a2 2 0 0 1 2-2h12v4M3 7v10a2 2 0 0 0 2 2h14V9H5a2 2 0 0 1-2-2zM16 14h2" /></svg>;
+}
+function CashIcon(p: IconProps) {
+  // Cédula
+  return <svg {...base} {...p}><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /></svg>;
+}
+function StockIcon(p: IconProps) {
+  // Caixa com tampa
+  return <svg {...base} {...p}><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5zM3 7.5l9 4.5 9-4.5M12 12v9" /></svg>;
+}
+function ReportIcon(p: IconProps) {
+  // Barras de gráfico sobre uma linha de base
+  return <svg {...base} {...p}><path d="M4 20h16M7 20v-6M12 20V6M17 20v-9" /></svg>;
 }
 function CalendarIcon(p: IconProps) {
   return <svg {...base} {...p}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>;

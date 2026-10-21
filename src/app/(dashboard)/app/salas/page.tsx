@@ -18,7 +18,7 @@ export default async function SalasPage() {
   const { tenant } = ctx;
   if (!tenant.salasAtivas) redirect("/app/configuracoes/segmentos");
 
-  const [rooms, resources, blocks] = await Promise.all([
+  const [rooms, resources, blocks, units] = await Promise.all([
     db.room.findMany({ where: { tenantId: tenant.id }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], include: { _count: { select: { services: true } } } }),
     db.resource.findMany({ where: { tenantId: tenant.id }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], include: { _count: { select: { services: true } } } }),
     db.scheduleBlock.findMany({
@@ -26,6 +26,7 @@ export default async function SalasPage() {
       orderBy: { startsAt: "asc" }, take: 50,
       include: { room: { select: { name: true } }, resource: { select: { name: true } } },
     }),
+    db.unit.findMany({ where: { tenantId: tenant.id, active: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
   ]);
 
   return (
@@ -36,7 +37,7 @@ export default async function SalasPage() {
         actions={<Link href="/app/agenda?view=rooms" className="btn-secondary">Agenda por sala</Link>}
       />
       <div className="grid gap-6 lg:grid-cols-2">
-        <RoomsManager rooms={rooms.map((r) => ({ id: r.id, name: r.name, kind: r.kind, capacity: r.capacity, description: r.description, active: r.active, services: r._count.services }))} />
+        <RoomsManager rooms={rooms.map((r) => ({ id: r.id, name: r.name, kind: r.kind, capacity: r.capacity, description: r.description, active: r.active, services: r._count.services, unitId: r.unitId }))} units={units} />
         <ResourcesManager resources={resources.map((r) => ({ id: r.id, name: r.name, quantity: r.quantity, description: r.description, active: r.active, services: r._count.services }))} />
       </div>
       <div className="mt-6">

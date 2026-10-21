@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { AppointmentError, createAppointment, MAX_ITEMS_PER_VISIT } from "@/lib/appointments/service";
 import { describeProfessionals } from "@/lib/appointments/summary";
 import { hasPolicies } from "@/lib/policies";
+import { exigeEscolhaDeUnidade } from "@/lib/units/rules";
 
 const itemSchema = z.object({
   serviceId: z.string().min(1),
@@ -18,6 +19,7 @@ const bodySchema = z.object({
   addOnIds: z.array(z.string().min(1)).max(10).optional(),
   professionalId: z.string().min(1).optional().nullable(),
   acceptPolicies: z.boolean().optional(),
+  unitId: z.string().min(1).optional().nullable(), // obrigatório quando o estabelecimento tem 2+ unidades ativas
   dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   minutes: z.number().int().min(0).max(1439),
   name: z.string().trim().min(2, "Informe seu nome").max(80),
@@ -54,9 +56,15 @@ export async function POST(req: Request, { params }: RouteContext<"/api/public/[
     return NextResponse.json({ ok: false, error: "Você precisa aceitar as políticas de atendimento para agendar." }, { status: 400 });
   }
 
+  // Estabelecimento com mais de uma unidade: a cliente precisa dizer em qual.
+  if (!d.unitId && exigeEscolhaDeUnidade(await db.unit.count({ where: { tenantId: tenant.id, active: true } }))) {
+    return NextResponse.json({ ok: false, error: "Escolha a unidade." }, { status: 400 });
+  }
+
   try {
     const appt = await createAppointment({
       tenant,
+      unitId: d.unitId ?? null,
       items,
       dateKey: d.dateKey,
       minutes: d.minutes,

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { completeAppointmentAction } from "@/actions/appointments";
 import { MAX_CHARGES, parseExtras, totalExtras, type ExtraInput } from "@/lib/appointments/charges";
 import { formatCents } from "@/lib/money";
+import { METHODS, METHOD_LABEL, type Method } from "@/lib/finance/rules";
 
 /**
  * Ao concluir o atendimento: houve valores adicionais (produtos usados, material extra)? Se sim, descrição e valor de
@@ -14,6 +15,7 @@ export function CompleteDialog({ id, serviceTotalCents, onClose }: { id: string;
   const [temExtras, setTemExtras] = useState(false);
   const [lines, setLines] = useState<ExtraInput[]>([{ description: "", amount: "" }]);
   const [error, setError] = useState<string | null>(null);
+  const [forma, setForma] = useState<Method | null>(null);
 
   const parsed = temExtras ? parseExtras(lines) : { ok: true as const, extras: [] };
   const extras = parsed.ok ? parsed.extras : [];
@@ -23,7 +25,7 @@ export function CompleteDialog({ id, serviceTotalCents, onClose }: { id: string;
   const confirmar = () => {
     setError(null);
     start(async () => {
-      const r = await completeAppointmentAction(id, temExtras ? lines : []);
+      const r = await completeAppointmentAction(id, temExtras ? lines : [], forma);
       if (r && !r.ok) { setError(r.error); return; }
       onClose();
     });
@@ -65,6 +67,14 @@ export function CompleteDialog({ id, serviceTotalCents, onClose }: { id: string;
             )}
           </div>
         )}
+
+        <p className="mt-4 text-sm font-medium text-zinc-800">Como a cliente pagou?</p>
+        <p className="text-xs text-zinc-500">Alimenta o financeiro e o caixa. Pode deixar em branco e informar depois.</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {METHODS.map((m) => (
+            <button key={m} type="button" aria-pressed={forma === m} onClick={() => setForma(forma === m ? null : m)} className={`btn px-3 py-1.5 text-sm ${forma === m ? "bg-zinc-900 text-white" : "border border-zinc-200 bg-white text-zinc-700"}`}>{METHOD_LABEL[m]}</button>
+          ))}
+        </div>
 
         {error && <p role="alert" className="mt-3 text-sm text-rose-600">{error}</p>}
         <div className="mt-5 flex gap-2">

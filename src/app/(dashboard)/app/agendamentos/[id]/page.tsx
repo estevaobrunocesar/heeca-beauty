@@ -18,6 +18,8 @@ import { moduloClinicoAtivo } from "@/lib/treatments/rules";
 import { visitIsParallel } from "@/lib/scheduling/availability";
 import { AddServiceCard } from "./add-service";
 import { ChangeProfessional } from "./change-professional";
+import { PaymentMethodPicker } from "./payment-method";
+import type { Method } from "@/lib/finance/rules";
 import { SessionEvolution } from "../../pacotes/[id]/clinical-tools";
 
 export default async function AppointmentDetailPage({ params }: PageProps<"/app/agendamentos/[id]">) {
@@ -34,6 +36,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
       charges: { orderBy: { createdAt: "asc" } },
       messages: { orderBy: { createdAt: "desc" } },
       payment: true,
+      unit: { select: { name: true } },
       client: { include: { _count: { select: { appointments: true } } } },
     },
   });
@@ -76,7 +79,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h1 className="text-xl font-semibold">{a.serviceName}</h1>
-                <p className="mt-1 text-zinc-600">{fmtDateTime(a.startsAt, tz)} → {fmtTime(a.endsAt, tz)} · {a.durationMinutes} min · {formatCents(a.priceCents)}{visitIsParallel(a.items) && <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-800">serviços ao mesmo tempo</span>}</p>
+                <p className="mt-1 text-zinc-600">{fmtDateTime(a.startsAt, tz)} → {fmtTime(a.endsAt, tz)} · {a.durationMinutes} min · {formatCents(a.priceCents)}{a.unit && <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">{a.unit.name}</span>}{visitIsParallel(a.items) && <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-800">serviços ao mesmo tempo</span>}</p>
                 {/* Itens da visita: um por serviço, cada um com profissional e horário próprios (SPEC §11) */}
                 <ul className="mt-3 space-y-1.5 text-sm">
                   {a.items.map((it) => (
@@ -109,6 +112,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
                     <p className="mt-1 flex justify-between border-t border-amber-200 pt-1 font-medium text-amber-950"><span>Total com adicionais</span><span className="tabular-nums">{formatCents(a.priceCents + totalAdicionais)}</span></p>
                   </div>
                 )}
+                {a.status === "COMPLETED" && ctx.seesTeam && <PaymentMethodPicker appointmentId={a.id} current={a.paymentMethod as Method | null} />}
               </div>
               <StatusBadge status={a.status} className="text-sm" />
             </div>

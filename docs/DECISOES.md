@@ -157,3 +157,57 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 **Descartado.** (1) Trocar também o horário: é reagendar, que já existe. (2) Trocar depois de concluído: a comissão já foi fixada.
 
 **Consequência.** Só código; sem migração.
+
+## 2026-10-21 — Relatórios com período e exportação CSV (roteiro de funcionalidades: módulo 1)
+
+**Regra.** Tela `/app/relatorios` (só dono e gerente) com período livre (padrão: mês corrente; no máximo 366 dias): faturamento (serviços + valores adicionais), concluídos, ticket médio, faltas e taxa de faltas (faltas ÷ concluídos+faltas), série por dia, por profissional (com comissão), serviços mais vendidos, categorias, clientes novas × recorrentes (nova = sem visita concluída antes do período) e melhores clientes. Todo número sai de `lib/reports/summary.ts` (puro, testado), então a tela e o CSV nunca discordam. O faturamento só conta visitas **concluídas**, pelo início da visita no fuso do estabelecimento.
+
+**CSV.** `/api/relatorios?tipo=atendimentos|servicos|profissionais|clientes&de=&ate=`: separador `;`, BOM UTF-8 e vírgula decimal (Excel brasileiro); texto começando com `= + - @` ganha apóstrofo (injeção de fórmula). Exige sessão e perfil dono/gerente.
+
+**Consequência.** Só código, sem migração.
+
+## 2026-10-22 — Controle de estoque de produtos (roteiro de funcionalidades: módulo 3)
+
+**Regra.** Tela `/app/estoque` (só dono e gerente): cadastro de produto (nome, unidade un/ml/g, custo, mínimo, observação), lançamentos de **entrada**, **saída** e **acerto de contagem**, histórico por produto e indicadores (ativos, precisam de reposição, valor a custo). O **saldo nunca é gravado**: é a soma de `StockMovement.quantity` (com sinal), como nos pacotes de sessões. Estoque informado no cadastro entra como a primeira movimentação (acerto "Estoque inicial"). Saída manual não passa do saldo; o acerto grava a diferença até a contagem real.
+
+**Baixa automática.** No cadastro do serviço, "Produtos usados por atendimento" (`ServiceProduct`: produto + quantidade). Ao **concluir** o atendimento, cada item faz a baixa da receita do seu serviço (`USAGE`, ligada ao atendimento). É idempotente (concluir de novo não baixa de novo, e um serviço acrescentado depois baixa só a diferença) e **nunca bloqueia a conclusão**: se faltar saldo ele fica negativo e o produto aparece como "negativo" para ser acertado; falha de estoque é registrada em log e não desfaz a conclusão. Reabrir (concluído → faltou) devolve tudo (`RETURN`); concluir outra vez baixa de novo. Produto desativado sai da baixa e das listas, mas mantém histórico.
+
+**Aviso.** Produto "baixo" (saldo ≤ mínimo, quando há mínimo), zerado ou negativo aparece no painel inicial para dono/gerente.
+
+**Descartado.** (1) Venda de produto ao cliente com baixa: hoje os "valores adicionais" ao concluir seguem livres (descrição + valor), sem ligação ao estoque; fica como evolução. (2) Lote/validade e fornecedores: não pedido. (3) Quantidade decimal: unidades inteiras (ml e g cobrem o fracionado).
+
+**Consequência.** Migração aditiva `20261022120000_stock` (enum `StockMovementKind`, `Product`, `StockMovement`, `ServiceProduct`). Atenção ao publicar: `prisma migrate deploy`.
+
+## 2026-10-23 — Financeiro e caixa (roteiro de funcionalidades: módulo 2)
+
+**Receita.** Vem dos atendimentos **concluídos** (serviços + valores adicionais), no dia de `Appointment.completedAt` (os antigos, sem ele, valem pelo início da visita), por **forma de pagamento** (`Appointment.paymentMethod`: dinheiro, Pix, débito, crédito, outro). A forma é perguntada no diálogo de concluir (opcional) e pode ser informada ou corrigida depois no detalhe do atendimento. "Não informado" aparece separado no resumo.
+
+**Despesas** (`Expense`, só dono e gerente): descrição, categoria, valor, forma, data (não futura). Resultado do período = entrou − saiu, com margem. Tela `/app/financeiro`.
+
+**Caixa** (`/app/caixa`, dono, gerente e recepção): uma sessão aberta por vez (`CashSession`, com troco inicial; abrir é Serializable). O **esperado na gaveta é calculado**: troco + atendimentos pagos em **dinheiro** concluídos com o caixa aberto + suprimentos − despesas em dinheiro lançadas com o caixa aberto − sangrias (`CashMovement`). Sangria maior que o esperado é recusada. Ao fechar grava esperado, contado e a diferença (confere/sobra/falta). Só dinheiro passa pela gaveta; Pix e cartão aparecem apenas no financeiro.
+
+**Descartado.** Contas a pagar/receber, DRE, conciliação bancária e múltiplos caixas simultâneos.
+
+**Consequência.** Migração aditiva `20261023120000_finance_cash`.
+
+## 2026-10-24 — Fidelidade por cashback (módulo 4)
+
+**Regra.** Configurações → Fidelidade: percentual (0 desliga; teto 50%). Cada atendimento **concluído** credita à cliente esse percentual do valor dos **serviços** (os valores adicionais não contam), arredondado para baixo, em `CashbackEntry` (EARN). O saldo **nunca é gravado** (soma dos lançamentos). Idempotente: concluir de novo não credita de novo; reabrir (concluído → faltou) estorna (REVERSAL). O **uso** é registrado na ficha da cliente (recepção, gerente, dono), não passa do saldo e é Serializable; o desconto é dado no pagamento. Ajuste manual (bônus/correção) só dono e gerente, com motivo, sem deixar o saldo negativo. Desligar a fidelidade não zera saldos existentes.
+
+**Descartado.** Pontos por faixa, validade do saldo, resgate automático no checkout (o atendimento não tem campo de desconto).
+
+## 2026-10-24 — Campanhas assistidas (módulo 5)
+
+**Regra.** `/app/campanhas` (dono, gerente, recepção): **aniversariantes** (hoje, 7 ou 30 dias; 29/02 comemora em 28/02 nos anos comuns) e **clientes que sumiram** (último atendimento concluído há N dias ou mais, sem agendamento futuro; N configurável de 15 a 365, padrão 60). Cada cliente traz o link do WhatsApp com a mensagem pronta (`{nome}`, `{estabelecimento}`; textos editáveis, com padrão) e o envio é registrado em `CampaignSend`, **uma vez por cliente e período** (aniversário: por ano; reativação: por mês), com "desfazer".
+
+**Por que assistida.** O disparo automático em massa pelo Heeca Notify depende de modelos de mensagem aprovados pela Meta (análise em andamento). A lista, o texto e o controle de repetição já existem; quando os modelos forem aprovados, só o passo de envio muda.
+
+**Consequência.** Migração `20261024120000_loyalty_campaigns` (cashback + campanhas).
+
+## 2026-10-25 — Múltiplas unidades (módulo 6)
+
+**Regra.** Configurações → Unidades (`Unit`). Cada profissional e cada sala pode ter uma unidade; **sem unidade (null) vale em qualquer uma**. Com 0 ou 1 unidade ativa nada muda para quem agenda. Com **2 ou mais ativas**, a página pública pergunta a unidade antes dos serviços e mostra só os profissionais e serviços dela; o servidor exige a unidade (`Escolha a unidade.`). O filtro mora num ponto só, `resolveVisitItems`: restringe profissionais e salas pela unidade, de modo que a lista de horários e a criação concordam e uma sala de outra unidade nunca é oferecida. No painel, onde cada serviço já tem profissional, a unidade da visita vem do primeiro profissional que tem unidade. `Appointment.unitId` guarda a unidade; a agenda e os relatórios (e o CSV) filtram por unidade.
+
+**Descartado.** Profissional em várias unidades ao mesmo tempo (use "todas as unidades"), estoque/caixa/financeiro por unidade (seguem do estabelecimento todo) e horários de funcionamento por unidade.
+
+**Consequência.** Migração aditiva `20261025120000_units`.

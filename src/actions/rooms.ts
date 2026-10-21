@@ -40,12 +40,20 @@ const roomSchema = z.object({
   description: z.string().trim().max(300).optional().or(z.literal("")),
 });
 
+/** Unidade da sala: só se o formulário a enviar e for do estabelecimento; vazio = sala de qualquer unidade. */
+async function roomUnit(tenantId: string, formData: FormData): Promise<{ unitId: string | null } | Record<string, never>> {
+  if (!formData.has("unitId")) return {};
+  const raw = String(formData.get("unitId") ?? "").trim();
+  if (!raw) return { unitId: null };
+  return { unitId: (await db.unit.findFirst({ where: { id: raw, tenantId }, select: { id: true } }))?.id ?? null };
+}
+
 export async function createRoomAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await manager();
   const p = roomSchema.safeParse(Object.fromEntries(formData));
   if (!p.success) return fail(p.error.issues[0].message);
   const last = await db.room.findFirst({ where: { tenantId: ctx.tenant.id }, orderBy: { sortOrder: "desc" }, select: { sortOrder: true } });
-  await db.room.create({ data: { tenantId: ctx.tenant.id, name: p.data.name, kind: p.data.kind || null, capacity: p.data.capacity, description: p.data.description || null, sortOrder: (last?.sortOrder ?? 0) + 1 } });
+  await db.room.create({ data: { tenantId: ctx.tenant.id, name: p.data.name, kind: p.data.kind || null, capacity: p.data.capacity, description: p.data.description || null, sortOrder: (last?.sortOrder ?? 0) + 1, ...(await roomUnit(ctx.tenant.id, formData)) } });
   revalidate();
   return success("Sala criada!");
 }
@@ -54,7 +62,7 @@ export async function updateRoomAction(id: string, _prev: ActionResult, formData
   const ctx = await manager();
   const p = roomSchema.safeParse(Object.fromEntries(formData));
   if (!p.success) return fail(p.error.issues[0].message);
-  const r = await db.room.updateMany({ where: { id, tenantId: ctx.tenant.id }, data: { name: p.data.name, kind: p.data.kind || null, capacity: p.data.capacity, description: p.data.description || null } });
+  const r = await db.room.updateMany({ where: { id, tenantId: ctx.tenant.id }, data: { name: p.data.name, kind: p.data.kind || null, capacity: p.data.capacity, description: p.data.description || null, ...(await roomUnit(ctx.tenant.id, formData)) } });
   if (r.count === 0) return fail("Sala não encontrada");
   revalidate();
   return success("Sala atualizada!");

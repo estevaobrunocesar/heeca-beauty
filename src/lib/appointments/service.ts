@@ -2,7 +2,7 @@ import "server-only";
 import { nanoid } from "nanoid";
 import { db } from "@/lib/db";
 import type { Tenant } from "@/generated/prisma/client";
-import type { AppointmentActor, AppointmentSource, AppointmentStatus } from "@/generated/prisma/enums";
+import type { AppointmentActor, AppointmentSource, AppointmentStatus, PaymentMethod } from "@/generated/prisma/enums";
 import { parseClientPhone } from "@/lib/phone";
 import { getVisitSlots, occupiedUtc, placeItemsInVisit } from "@/lib/scheduling/service";
 import { visitIsParallel } from "@/lib/scheduling/availability";
@@ -17,6 +17,9 @@ import { createDepositCharge, expireDeposit, refundDeposit } from "@/lib/payment
 import { computeBookingTotals, describeBooking, normalizeAddOnIds } from "@/lib/services/addons";
 import { describeVisit, visitTotals } from "./summary";
 import { commissionCentsFor } from "@/lib/commissions";
+import { baixarEstoqueDoAtendimento, estornarEstoqueDoAtendimento } from "@/lib/stock/db";
+import { valeNaUnidade, unidadeDaVisita } from "@/lib/units/rules";
+import { creditarCashbackDoAtendimento, estornarCashbackDoAtendimento } from "@/lib/loyalty/db";
 
 export class AppointmentError extends Error {
   constructor(message: string, readonly code: string = "APPOINTMENT_ERROR") {
@@ -48,6 +51,8 @@ type CreateInput = {
   actor: AppointmentActor;
   /** Visita simultânea (só pelo painel): os serviços começam juntos, cada profissional no seu. */
   parallel?: boolean;
+  /** Unidade escolhida (estabelecimento com mais de uma). Restringe profissionais e salas e fica gravada na visita. */
+  unitId?: string | null;
 };
 
 export const MAX_ITEMS_PER_VISIT = 6;
@@ -57,7 +62,7 @@ export const MAX_ITEMS_PER_VISIT = 6;
  * Compartilhado por `createAppointment` e pela rota pública de horários, para que a lista
  * de horários e a validação do pedido usem exatamente as mesmas regras.
  */
-export async function resolveVisitItems(tenantId: string, inputs: CreateItemInput[]) {
+export async function resolveVisitItems(tenantId: string, inputs: CreateItemInput[], chosenUnitId?: string | null) {
   if (inputs.length === 0) throw new AppointmentError("Escolha ao menos um serviço.", "NO_ITEMS");
   if (inputs.length > MAX_ITEMS_PER_VISIT) throw new AppointmentError(`No máximo ${MAX_ITEMS_PER_VISIT} serviços por agendamento.`, "TOO_MANY_ITEMS");
 
@@ -67,8 +72,8 @@ export async function resolveVisitItems(tenantId: string, inputs: CreateItemInpu
     db.service.findMany({
       where: { id: { in: serviceIds }, tenantId, active: true, deletedAt: null, isAddOn: false },
       include: {
-        professionals: { where: { professional: { active: true } }, include: { professional: { select: { id: true, sortOrder: true } } } },
-        rooms: { where: { room: { active: true } }, include: { room: { select: { id: true, sortOrder: true } } } },
+        professionals: { where: { professional: { active: true } }, include: { professional: { select: { id: true, sortOrder: true, unitId: true } } } },
+        rooms: { where: { room: { active: true } }, include: { room: { select: { id: true, sortOrder: true, unitId: true } } } },
         resources: { where: { resource: { active: true } }, select: { resourceId: true, quantity: true } },
       },
     }),
@@ -76,20 +81,24 @@ export async function resolveVisitItems(tenantId: string, inputs: CreateItemInpu
       ? db.service.findMany({ where: { id: { in: addOnIds }, tenantId, active: true, deletedAt: null, isAddOn: true } })
       : Promise.resolve([]),
     // Salas ativas na ordem cadastrada: candidatas de um serviço que exige sala sem restringir quais.
-    db.room.findMany({ where: { tenantId, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true } }),
+    db.room.findMany({ where: { tenantId, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, unitId: true } }),
   ]);
   if (services.length !== serviceIds.length) throw new AppointmentError("Um dos serviços escolhidos não está mais disponível.", "SERVICE_NOT_FOUND");
   if (addOns.length !== addOnIds.length) throw new AppointmentError("Um dos adicionais escolhidos não está mais disponível.", "ADDON_NOT_FOUND");
   const serviceById = new Map(services.map((s) => [s.id, s]));
   const addOnById = new Map(addOns.map((a) => [a.id, a]));
 
+  // Unidade da visita: a escolhida; sem escolha (painel), a do primeiro profissional pedido que tenha unidade. Assim a lista
+  // de horários e a criação concordam e uma sala de outra unidade nunca é oferecida.
+  const unitId = chosenUnitId ?? inputs.map((i) => (i.professionalId ? serviceById.get(i.serviceId)?.professionals.find((ps) => ps.professional.id === i.professionalId)?.professional.unitId ?? null : null)).find((u) => u != null) ?? null;
+
   return inputs.map((input, index) => {
     const service = serviceById.get(input.serviceId)!;
     const itemAddOns = normalizeAddOnIds(input.addOnIds).map((id) => addOnById.get(id)!);
     const totals = computeBookingTotals(service, itemAddOns);
     // Quem pode executar este serviço (ativos, na ordem de exibição)
-    const eligible = service.professionals.map((ps) => ps.professional).sort((a, b) => a.sortOrder - b.sortOrder).map((p) => p.id);
-    if (eligible.length === 0) throw new AppointmentError(`Nenhum profissional disponível para "${service.name}".`, "NO_PROFESSIONAL");
+    const eligible = service.professionals.map((ps) => ps.professional).filter((p) => valeNaUnidade(p.unitId, unitId)).sort((a, b) => a.sortOrder - b.sortOrder).map((p) => p.id);
+    if (eligible.length === 0) throw new AppointmentError(unitId ? `Nenhum profissional desta unidade faz "${service.name}".` : `Nenhum profissional disponível para "${service.name}".`, "NO_PROFESSIONAL");
     let candidates = eligible;
     if (input.professionalId) {
       if (!eligible.includes(input.professionalId)) throw new AppointmentError(`Este profissional não realiza "${service.name}".`, "PROFESSIONAL_MISMATCH");
@@ -98,7 +107,7 @@ export async function resolveVisitItems(tenantId: string, inputs: CreateItemInpu
     // Onde: salas específicas do serviço, ou qualquer sala ativa; null = serviço sem sala (opção salasAtivas desligada ou serviço sem exigência).
     let roomCandidates: string[] | null = null;
     if (service.roomRequired) {
-      roomCandidates = service.rooms.length ? service.rooms.map((sr) => sr.room).sort((a, b) => a.sortOrder - b.sortOrder).map((r) => r.id) : allRooms.map((r) => r.id);
+      roomCandidates = service.rooms.length ? service.rooms.map((sr) => sr.room).filter((r) => valeNaUnidade(r.unitId, unitId)).sort((a, b) => a.sortOrder - b.sortOrder).map((r) => r.id) : allRooms.filter((r) => valeNaUnidade(r.unitId, unitId)).map((r) => r.id);
       if (input.roomId) {
         if (!roomCandidates.includes(input.roomId)) throw new AppointmentError(`"${service.name}" não pode ser feito nessa sala.`, "ROOM_MISMATCH");
         roomCandidates = [input.roomId];
@@ -128,7 +137,9 @@ export async function resolveVisitItems(tenantId: string, inputs: CreateItemInpu
 export async function createAppointment(input: CreateInput) {
   const { tenant, dateKey, minutes, source, actor } = input;
 
-  const resolved = await resolveVisitItems(tenant.id, input.items);
+  const unitId = input.unitId ? (await db.unit.findFirst({ where: { id: input.unitId, tenantId: tenant.id, active: true }, select: { id: true } }))?.id ?? null : null;
+  if (input.unitId && !unitId) throw new AppointmentError("Esta unidade não está mais disponível.", "UNIT_NOT_FOUND");
+  const resolved = await resolveVisitItems(tenant.id, input.items, unitId);
   const totals = visitTotals(resolved);
 
   const parsedPhone = parseClientPhone(input.client.phone, tenant.requirePhone);
@@ -158,6 +169,10 @@ export async function createAppointment(input: CreateInput) {
       resources: { create: (r.visitItem.resources ?? []).map((n) => ({ resourceId: n.resourceId, quantity: n.quantity })) },
     };
   });
+
+  // Unidade da visita: a escolhida ou a do primeiro profissional que tem unidade.
+  const profUnits = await db.professional.findMany({ where: { id: { in: itemRows.map((r) => r.professionalId) } }, select: { id: true, unitId: true } });
+  const visitUnitId = unidadeDaVisita(unitId, itemRows.map((r) => profUnits.find((p) => p.id === r.professionalId)?.unitId ?? null));
 
   // Sinal via Pix: só para agendamentos da página pública. Pagou = confirmou.
   const depositCents = source === "PUBLIC" ? computeDepositCents(tenant, totals.priceCents) : 0;
@@ -197,6 +212,7 @@ export async function createAppointment(input: CreateInput) {
           endsAt: slot.endsAt,
           status: initialStatus,
           source,
+          unitId: visitUnitId,
           serviceName: describeVisit(resolved),
           // Simultânea: a visita dura do primeiro início ao último fim (não a soma dos serviços).
           durationMinutes: input.parallel ? Math.round((slot.endsAt.getTime() - slot.startsAt.getTime()) / 60_000) : totals.durationMinutes,
@@ -294,6 +310,8 @@ export async function transition(input: TransitionInput) {
     where: { id: appt.id },
     data: {
       status: to,
+      // O dia do financeiro: quando foi concluído (limpa ao reabrir).
+      ...(to === "COMPLETED" ? { completedAt: new Date() } : appt.status === "COMPLETED" ? { completedAt: null } : {}),
       ...(to === "CONFIRMED" ? { confirmedAt: new Date(), expiresAt: null } : {}),
       ...(isCancel ? { cancelledAt: new Date(), cancelReason: reason ?? null, expiresAt: null } : {}),
       events: { create: { tenantId: appt.tenantId, actor, type: "STATUS_CHANGED", fromStatus: appt.status, toStatus: to, data: reason ? { reason } : undefined } },
@@ -303,6 +321,20 @@ export async function transition(input: TransitionInput) {
   // Concluída: apura a comissão de cada item com a regra vigente (SPEC §17). Reabrir (COMPLETED → outro) limpa.
   if (to === "COMPLETED") await settleCommissions(appt.id);
   else if (appt.status === "COMPLETED") await db.appointmentItem.updateMany({ where: { appointmentId: appt.id, commissionPaidAt: null }, data: { commissionCents: null } });
+  // Estoque: concluir baixa o que os serviços consomem; reabrir devolve. Falha de estoque nunca desfaz a conclusão.
+  try {
+    if (to === "COMPLETED") await baixarEstoqueDoAtendimento(appt.id);
+    else if (appt.status === "COMPLETED") await estornarEstoqueDoAtendimento(appt.id);
+  } catch (err) {
+    console.error("[estoque] baixa do atendimento falhou", appt.id, err);
+  }
+  // Fidelidade: concluir credita o cashback; reabrir estorna. Também nunca desfaz a conclusão.
+  try {
+    if (to === "COMPLETED") await creditarCashbackDoAtendimento(appt.id);
+    else if (appt.status === "COMPLETED") await estornarCashbackDoAtendimento(appt.id);
+  } catch (err) {
+    console.error("[fidelidade] cashback do atendimento falhou", appt.id, err);
+  }
   // Sessões de pacote espelham o status da visita (realizada debita; cancelada libera; falta conforme a política).
   await espelharVisita(appt.id);
 
@@ -592,7 +624,7 @@ export async function addServiceToAppointment(input: AddServiceInput) {
  * Conclui o atendimento e lança, antes, os valores adicionais (produtos usados). A comissão é apurada só sobre os
  * serviços (`settleCommissions`); os adicionais entram no faturamento. Se a conclusão falhar, os adicionais não ficam.
  */
-export async function completeAppointment(input: { appointmentId: string; tenantId: string; actor: AppointmentActor; extras: { description: string; amountCents: number }[] }) {
+export async function completeAppointment(input: { appointmentId: string; tenantId: string; actor: AppointmentActor; extras: { description: string; amountCents: number }[]; paymentMethod?: PaymentMethod | null }) {
   const appt = await db.appointment.findFirst({ where: { id: input.appointmentId, tenantId: input.tenantId }, select: { id: true, status: true } });
   if (!appt) throw new AppointmentError("Agendamento não encontrado.", "NOT_FOUND");
   if (!canTransition(input.actor, appt.status, "COMPLETED")) throw new AppointmentError("Este agendamento não pode ser concluído agora.", "BAD_TRANSITION");
@@ -606,6 +638,7 @@ export async function completeAppointment(input: { appointmentId: string; tenant
     if (created.length) await db.appointmentCharge.deleteMany({ where: { id: { in: created.map((c) => c.id) } } });
     throw e;
   }
+  if (input.paymentMethod) await db.appointment.update({ where: { id: appt.id }, data: { paymentMethod: input.paymentMethod } });
   if (created.length) {
     await db.appointmentEvent.create({
       data: { tenantId: input.tenantId, appointmentId: appt.id, actor: input.actor, type: "CHARGES_ADDED", data: { count: created.length, totalCents: created.reduce((n, c) => n + c.amountCents, 0) } },

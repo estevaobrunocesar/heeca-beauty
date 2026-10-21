@@ -10,11 +10,12 @@ import type { ActionResult } from "@/lib/action-result";
 type Props = {
   id: string;
   canManage: boolean;
-  initial: { name: string; bio: string; photoUrl: string; phone: string; email: string; specialties: string; commissionPercent: number | null; active: boolean };
+  initial: { name: string; bio: string; photoUrl: string; phone: string; email: string; specialties: string; commissionPercent: number | null; active: boolean; unitId: string };
+  units: { id: string; name: string }[];
   services: { id: string; name: string; active: boolean; checked: boolean; commissionPercent: number | null }[];
 };
 
-export function ProfileForm({ id, canManage, initial, services }: Props) {
+export function ProfileForm({ id, canManage, initial, services, units }: Props) {
   const [state, action] = useActionState<ActionResult, FormData>(updateProfessionalAction.bind(null, id), null);
   return (
     <form action={action} className="card space-y-4 p-6">
@@ -46,6 +47,17 @@ export function ProfileForm({ id, canManage, initial, services }: Props) {
           <input id="email" name="email" type="email" className="input" defaultValue={initial.email} />
         </div>
       </div>
+
+      {canManage && units.length > 0 && (
+        <div className="max-w-sm">
+          <label className="label" htmlFor="unitId">Unidade</label>
+          <select id="unitId" name="unitId" className="input" defaultValue={initial.unitId}>
+            <option value="">Todas as unidades</option>
+            {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-zinc-500">Onde esta pessoa atende. A cliente só vê o profissional da unidade que escolher.</p>
+        </div>
+      )}
 
       {canManage && (
         <>

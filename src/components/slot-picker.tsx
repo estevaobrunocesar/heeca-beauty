@@ -17,6 +17,8 @@ type Props = {
   excludeAppointmentId?: string; // reagendamento: os itens vêm do próprio agendamento
   /** Visita simultânea (painel): os serviços começam juntos, cada profissional no seu. */
   parallel?: boolean;
+  /** Unidade escolhida (estabelecimento com mais de uma): restringe os profissionais e salas dos horários. */
+  unitId?: string | null;
   professionalId?: string | null; // null/undefined = qualquer profissional| null; // null/undefined = qualquer profissional
   todayKey: string; // no fuso do tenant, calculado no servidor
   maxAdvanceDays: number;
@@ -28,7 +30,7 @@ type Props = {
  * Calendário mensal + lista de horários. Consulta a API pública de disponibilidade,
  * que usa exatamente a mesma função de cálculo usada na validação do agendamento.
  */
-export function SlotPicker({ slug, items, serviceId, addOnIds, excludeAppointmentId, parallel, professionalId, todayKey, maxAdvanceDays, value, onChange }: Props) {
+export function SlotPicker({ slug, items, serviceId, addOnIds, excludeAppointmentId, parallel, unitId, professionalId, todayKey, maxAdvanceDays, value, onChange }: Props) {
   const addOnsKey = addOnIds?.join(",") ?? "";
   // Serializado para entrar na chave de cache e no efeito sem depender da identidade do array.
   const itemsJson = items ? JSON.stringify(items.map((i) => ({ serviceId: i.serviceId, professionalId: i.professionalId ?? null, addOnIds: i.addOnIds ?? [] }))) : "";
@@ -51,8 +53,9 @@ export function SlotPicker({ slug, items, serviceId, addOnIds, excludeAppointmen
       if (professionalId) p.set("professionalId", professionalId);
     }
     if (parallel && !excludeAppointmentId) p.set("parallel", "1");
+    if (unitId && !excludeAppointmentId) p.set("unidade", unitId);
     return p;
-  }, [itemsJson, serviceId, addOnsKey, excludeAppointmentId, professionalId, parallel]);
+  }, [itemsJson, serviceId, addOnsKey, excludeAppointmentId, professionalId, parallel, unitId]);
 
   const daysKey = `${monthKey}|${baseQuery}`;
   const slotsKey = selectedDay ? `${selectedDay}|${baseQuery}` : null;

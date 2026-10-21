@@ -16,7 +16,8 @@ type Service = {
 };
 type AddOn = { id: string; name: string; description: string | null; clientNotes: string | null; durationMinutes: number; priceCents: number };
 type Slot = { dateKey: string; minutes: number };
-type Professional = { id: string; name: string; photoUrl: string | null; bio: string | null; serviceIds: string[] };
+type Professional = { id: string; name: string; photoUrl: string | null; bio: string | null; serviceIds: string[]; unitId: string | null };
+type Unit = { id: string; name: string; address: string | null };
 
 /** Um serviço escolhido pela cliente, com adicionais e preferência de profissional (SPEC §11). */
 type VisitItem = { serviceId: string; addOnIds: string[]; professionalId: string | null };
@@ -28,6 +29,8 @@ type Props = {
   depositMode: DepositMode; depositValue: number;
   /** false = o estabelecimento aceita reserva sem telefone. */
   requirePhone: boolean;
+  /** Só preenchido quando há 2+ unidades ativas: a cliente escolhe a unidade antes dos serviços. */
+  units: Unit[];
 };
 
 const MAX_ITEMS = 6;
@@ -42,8 +45,10 @@ function fmtDuration(min: number) {
  * Fluxo da cliente (SPEC §10–11): serviços → profissional/adicionais por serviço + data/horário → seus dados.
  * Estado vive só no cliente; o servidor valida tudo de novo no POST.
  */
-export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmation, requirePolicyAcceptance, policies, categories, services, addOns, professionals, depositMode, depositValue, requirePhone }: Props) {
+export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmation, requirePolicyAcceptance, policies, categories, services: allServices, addOns, professionals: allProfessionals, depositMode, depositValue, requirePhone, units }: Props) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [unitId, setUnitId] = useState<string | null>(null);
+  const needsUnit = units.length >= 2;
   const [items, setItems] = useState<VisitItem[]>([]);
   const [slot, setSlot] = useState<Slot | null>(null);
   const [form, setForm] = useState({ name: "", phone: "", email: "", notes: "" });
@@ -52,6 +57,9 @@ export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmat
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ status: string; professionalName?: string; manageUrl?: string | null } | null>(null);
 
+  // Com unidade escolhida só valem os profissionais dela (ou sem unidade) e os serviços que algum deles faz.
+  const professionals = useMemo(() => (unitId ? allProfessionals.filter((p) => !p.unitId || p.unitId === unitId) : allProfessionals), [allProfessionals, unitId]);
+  const services = useMemo(() => (unitId ? allServices.filter((s) => professionals.some((p) => p.serviceIds.includes(s.id))) : allServices), [allServices, professionals, unitId]);
   const serviceById = useMemo(() => new Map(services.map((s) => [s.id, s])), [services]);
   const addOnById = useMemo(() => new Map(addOns.map((a) => [a.id, a])), [addOns]);
   const grouped = useMemo(() => groupByCategory(services, categories), [services, categories]);
@@ -132,7 +140,7 @@ export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmat
       const res = await fetch(`/api/public/${slug}/book`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: pickerItems, acceptPolicies: accepted, dateKey: slot.dateKey, minutes: slot.minutes, ...form }),
+        body: JSON.stringify({ unitId, items: pickerItems, acceptPolicies: accepted, dateKey: slot.dateKey, minutes: slot.minutes, ...form }),
       });
       const json = (await res.json()) as { ok?: boolean; status?: string; error?: string; code?: string; professionalName?: string; paymentUrl?: string | null; manageUrl?: string | null };
       if (!res.ok || !json.ok) {
@@ -159,7 +167,21 @@ export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmat
             <h2 className="font-display text-2xl font-semibold text-brand-950">O que você quer fazer?</h2>
             <p className="mt-1 text-xs text-zinc-500">Escolha um ou mais serviços — dá para fazer tudo na mesma visita.</p>
           </div>
-          {grouped.map((g) => (
+          {needsUnit && (
+            <div>
+              <h2 className="font-display text-2xl font-semibold text-brand-950">Em qual unidade?</h2>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {units.map((u) => (
+                  <button key={u.id} type="button" aria-pressed={unitId === u.id} onClick={() => { setUnitId(u.id); setItems([]); setSlot(null); }}
+                    className={`rounded-xl border p-3 text-left transition ${unitId === u.id ? "border-brand-600 bg-brand-50" : "border-zinc-200 bg-white hover:border-brand-300"}`}>
+                    <span className="block font-medium text-brand-950">{u.name}</span>
+                    {u.address && <span className="block text-xs text-zinc-500">{u.address}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {needsUnit && !unitId ? null : grouped.map((g) => (
             <section key={g.category?.id ?? "sem-categoria"}>
               {grouped.length > 1 && (
                 <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-brand-700">
@@ -296,7 +318,7 @@ export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmat
           </div>
 
           <h2 className="mb-3 mt-6 font-display text-2xl font-semibold text-brand-950">Escolha data e horário</h2>
-          <SlotPicker slug={slug} items={pickerItems} todayKey={todayKey} maxAdvanceDays={maxAdvanceDays} value={slot} onChange={setSlot} />
+          <SlotPicker slug={slug} unitId={unitId} items={pickerItems} todayKey={todayKey} maxAdvanceDays={maxAdvanceDays} value={slot} onChange={setSlot} />
           <button className="btn-accent mt-4 w-full rounded-xl py-3 text-base" disabled={!slot} onClick={() => setStep(3)}>
             Continuar
           </button>

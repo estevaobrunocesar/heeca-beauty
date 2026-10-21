@@ -14,6 +14,8 @@ import { perfilDoTenant } from "@/lib/marca-atual";
 import { escolheuSegmentos, fraseDeRetorno } from "@/lib/marca";
 import { withProfessionals } from "@/lib/appointments/queries";
 import { lerFicha, resumoFicha } from "@/lib/clients/ficha";
+import { saldosDoTenant } from "@/lib/stock/db";
+import { precisaReposicao, situacaoDe } from "@/lib/stock/rules";
 
 /**
  * Painel inicial (padrão Heeca, ver docs/PADRAO-PAINEL.md): saudação + KPIs com mini-gráfico, faturamento do mês,
@@ -94,6 +96,12 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
     .filter((x) => x.p.stage !== "unknown")
     .sort((a, b) => RETURN_STAGE_ORDER[a.p.stage] - RETURN_STAGE_ORDER[b.p.stage] || (a.p.daysUntilDue ?? 0) - (b.p.daysUntilDue ?? 0));
   const convite = fraseDeRetorno(segmentos);
+  // Estoque: aviso para dono e gerente quando algum produto ativo está baixo, zerado ou negativo.
+  let produtosParaRepor: string[] = [];
+  if (ctx.canManage) {
+    const [produtos, saldos] = await Promise.all([db.product.findMany({ where: { tenantId: tenant.id, active: true }, select: { id: true, name: true, minQuantity: true } }), saldosDoTenant(tenant.id)]);
+    produtosParaRepor = produtos.filter((p) => precisaReposicao(situacaoDe(saldos.get(p.id) ?? 0, p.minQuantity))).map((p) => p.name);
+  }
   const pedirSegmentos = ctx.canManage && !escolheuSegmentos(marca, tenant);
 
   const ativosHoje = todayList.filter((a) => ACTIVE_STATUSES.includes(a.status) || a.status === "COMPLETED");
@@ -122,6 +130,9 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
             Conta criada! Próximos passos: <Link href="/app/servicos/novo" className="underline">cadastre seus serviços</Link>, <Link href="/app/configuracoes/horarios" className="underline">confira seus horários</Link> e divulgue seu <Link href="/app/configuracoes" className="underline">link de agendamento</Link>.
           </Alert>
         </div>
+      )}
+      {produtosParaRepor.length > 0 && (
+        <div className="mb-4"><Alert kind="info"><Link href="/app/estoque" className="underline">Estoque pede reposição</Link>: {produtosParaRepor.slice(0, 4).join(", ")}{produtosParaRepor.length > 4 ? ` e mais ${produtosParaRepor.length - 4}` : ""}.</Alert></div>
       )}
       {servicesCount === 0 && !sp.bemvindo && (
         <div className="mb-4"><Alert kind="info">Sua página pública só aceita agendamentos depois que você <Link href="/app/servicos/novo" className="underline">cadastrar um serviço</Link>.</Alert></div>

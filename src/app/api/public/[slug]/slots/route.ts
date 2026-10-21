@@ -55,7 +55,7 @@ export async function GET(req: Request, { params }: RouteContext<"/api/public/[s
       } else {
         return NextResponse.json({ error: "bad_request" }, { status: 400 });
       }
-      items = (await resolveVisitItems(tenant.id, inputs)).map((r) => r.visitItem);
+      items = (await resolveVisitItems(tenant.id, inputs, q("unidade"))).map((r) => r.visitItem);
     }
   } catch (e) {
     if (e instanceof AppointmentError) return NextResponse.json({ error: e.code, message: e.message }, { status: 404 });

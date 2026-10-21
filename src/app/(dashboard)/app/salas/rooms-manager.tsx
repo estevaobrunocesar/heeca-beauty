@@ -6,10 +6,11 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { Alert } from "@/components/ui/alert";
 import type { ActionResult } from "@/lib/action-result";
 
-export type RoomRow = { id: string; name: string; kind: string | null; capacity: number; description: string | null; active: boolean; services: number };
+export type RoomRow = { id: string; name: string; kind: string | null; capacity: number; description: string | null; active: boolean; services: number; unitId: string | null };
+export type UnitOption = { id: string; name: string };
 
 /** Salas na ordem em que o motor as escolhe ("Sala 01" enche antes da "Sala 02"): lista ordenável + criar + editar inline + desativar. */
-export function RoomsManager({ rooms }: { rooms: RoomRow[] }) {
+export function RoomsManager({ rooms, units }: { rooms: RoomRow[]; units: UnitOption[] }) {
   const [state, formAction] = useActionState<ActionResult, FormData>(createRoomAction, null);
   return (
     <section className="card">
@@ -18,9 +19,15 @@ export function RoomsManager({ rooms }: { rooms: RoomRow[] }) {
         <p className="text-xs text-zinc-500">Na ordem daqui o sistema escolhe a primeira livre. Sala desativada não recebe agendamentos novos.</p>
       </div>
       <div className="divide-y divide-zinc-100">
-        {rooms.map((r, i) => <RoomLine key={r.id} room={r} isFirst={i === 0} isLast={i === rooms.length - 1} />)}
+        {rooms.map((r, i) => <RoomLine key={r.id} room={r} units={units} isFirst={i === 0} isLast={i === rooms.length - 1} />)}
         {rooms.length === 0 && <p className="px-4 py-6 text-center text-sm text-zinc-500">Nenhuma sala ainda. Cadastre a primeira abaixo.</p>}
         <form action={formAction} className="grid gap-2 px-4 py-3 sm:grid-cols-[1fr_1fr_auto_auto]">
+          {units.length > 0 && (
+            <select name="unitId" className="input sm:col-span-4" defaultValue="" aria-label="Unidade">
+              <option value="">Todas as unidades</option>
+              {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          )}
           <input name="name" required maxLength={60} className="input" placeholder="Nome (ex.: Sala 01)" />
           <input name="kind" maxLength={40} className="input" placeholder="Tipo (ex.: Massagem, Casal)" />
           <input name="capacity" type="number" min={1} max={20} defaultValue={1} className="input w-24" title="Capacidade (pessoas)" />
@@ -32,7 +39,7 @@ export function RoomsManager({ rooms }: { rooms: RoomRow[] }) {
   );
 }
 
-function RoomLine({ room, isFirst, isLast }: { room: RoomRow; isFirst: boolean; isLast: boolean }) {
+function RoomLine({ room, units, isFirst, isLast }: { room: RoomRow; units: UnitOption[]; isFirst: boolean; isLast: boolean }) {
   const [editing, setEditing] = useState(false);
   const [pending, start] = useTransition();
   const [state, formAction] = useActionState<ActionResult, FormData>(
@@ -46,6 +53,12 @@ function RoomLine({ room, isFirst, isLast }: { room: RoomRow; isFirst: boolean; 
         <input name="name" defaultValue={room.name} required maxLength={60} className="input" autoFocus />
         <input name="kind" defaultValue={room.kind ?? ""} maxLength={40} className="input" placeholder="Tipo" />
         <input name="capacity" type="number" min={1} max={20} defaultValue={room.capacity} className="input w-24" />
+        {units.length > 0 && (
+          <select name="unitId" className="input sm:col-span-3" defaultValue={room.unitId ?? ""} aria-label="Unidade">
+            <option value="">Todas as unidades</option>
+            {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+        )}
         <input name="description" defaultValue={room.description ?? ""} maxLength={300} className="input sm:col-span-3" placeholder="Descrição (opcional)" />
         <div className="flex items-center gap-2 sm:col-span-3">
           <SubmitButton>Salvar</SubmitButton>
@@ -61,6 +74,7 @@ function RoomLine({ room, isFirst, isLast }: { room: RoomRow; isFirst: boolean; 
         <span className="font-medium">{room.name}</span>
         {room.kind && <span className="ml-2 text-xs text-zinc-500">{room.kind}</span>}
         {room.capacity > 1 && <span className="ml-2 text-xs text-zinc-500">· {room.capacity} pessoas</span>}
+        {room.unitId && <span className="ml-2 text-xs text-zinc-500">· {units.find((u) => u.id === room.unitId)?.name}</span>}
         <span className="ml-2 text-xs text-zinc-400">· {room.services} {room.services === 1 ? "serviço" : "serviços"}</span>
         {!room.active && <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-600">desativada</span>}
       </span>
