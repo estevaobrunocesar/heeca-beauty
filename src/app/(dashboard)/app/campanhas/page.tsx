@@ -18,7 +18,7 @@ const JANELAS = [{ dias: 7, rotulo: "Próximos 7 dias" }, { dias: 30, rotulo: "P
 export default async function CampanhasPage({ searchParams }: PageProps<"/app/campanhas">) {
   const sp = await searchParams;
   const ctx = await requireAuth();
-  if (!ctx.seesTeam) redirect("/app");
+  if (!ctx.can("campanhas")) redirect("/app");
   const { tenant } = ctx;
   const hoje = todayKey(tenant.timezone);
   const tipo: CampaignKind = sp.tipo === "reativacao" ? "REACTIVATION" : "BIRTHDAY";
@@ -67,7 +67,7 @@ export default async function CampanhasPage({ searchParams }: PageProps<"/app/ca
         )}
       </section>
 
-      {ctx.canManage && <CampaignSettings birthdayMessage={tenant.birthdayMessage ?? ""} reactivationMessage={tenant.reactivationMessage ?? ""} reactivationDays={tenant.reactivationDays} />}
+      {ctx.can("configuracoes") && <CampaignSettings birthdayMessage={tenant.birthdayMessage ?? ""} reactivationMessage={tenant.reactivationMessage ?? ""} reactivationDays={tenant.reactivationDays} />}
       <p className="mt-3 text-xs text-mut">Envio automático em massa depende de modelos de mensagem aprovados pela Meta; enquanto isso, o envio é assistido, direto do WhatsApp da casa.</p>
     </>
   );

@@ -16,7 +16,7 @@ import { PaymentsCard, SessionEvolution } from "./clinical-tools";
 export default async function PacoteVendidoPage({ params }: PageProps<"/app/pacotes/[id]">) {
   const { id } = await params;
   const ctx = await requireAuth();
-  if (!ctx.canManage) redirect("/app");
+  if (!ctx.can("pacotes")) redirect("/app");
   const { tenant } = ctx;
   const tz = tenant.timezone;
   const pk = await db.clientPackage.findFirst({

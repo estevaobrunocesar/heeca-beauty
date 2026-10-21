@@ -13,7 +13,7 @@ const revalidate = () => { revalidatePath("/app/estoque"); revalidatePath("/app"
 
 async function manager() {
   const ctx = await requireAuth();
-  if (!ctx.canManage) throw new Error("Apenas a responsável pode gerenciar o estoque.");
+  if (!ctx.can("estoque")) throw new Error("Sem permissão para o estoque.");
   return ctx;
 }
 

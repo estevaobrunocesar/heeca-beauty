@@ -16,12 +16,12 @@ const MAX_CENTS = 10_000_000 * 100;
 
 async function manager() {
   const ctx = await requireAuth();
-  if (!ctx.canManage) throw new Error("Apenas a responsável pode gerenciar o financeiro.");
+  if (!ctx.can("financeiro")) throw new Error("Sem permissão para o financeiro.");
   return ctx;
 }
 async function frontDesk() {
   const ctx = await requireAuth();
-  if (!ctx.seesTeam) throw new Error("Sem permissão para operar o caixa.");
+  if (!ctx.can("caixa")) throw new Error("Sem permissão para operar o caixa.");
   return ctx;
 }
 const money = (v: unknown, { allowZero = false } = {}) => {

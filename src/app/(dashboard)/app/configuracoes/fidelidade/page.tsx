@@ -4,7 +4,8 @@ import { formatCents } from "@/lib/money";
 import { LoyaltyForm } from "./loyalty-form";
 
 export default async function LoyaltySettingsPage() {
-  const { tenant, canManage } = await requireAuth();
+  const { tenant, can } = await requireAuth();
+  const canManage = can("configuracoes");
   const [emCirculacao, clientes] = await Promise.all([
     db.cashbackEntry.aggregate({ where: { tenantId: tenant.id }, _sum: { amountCents: true } }),
     db.cashbackEntry.groupBy({ by: ["clientId"], where: { tenantId: tenant.id }, _sum: { amountCents: true }, having: { amountCents: { _sum: { gt: 0 } } } }),

@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: "Financeiro" };
 export default async function FinanceiroPage({ searchParams }: PageProps<"/app/financeiro">) {
   const sp = await searchParams;
   const ctx = await requireAuth();
-  if (!ctx.canManage) redirect("/app");
+  if (!ctx.can("financeiro")) redirect("/app");
   const { tenant } = ctx;
   const periodo = parsePeriodo(sp, tenant.timezone);
   const [receitas, despesas] = await Promise.all([receitasDoPeriodo(tenant, periodo), despesasDoPeriodo(tenant.id, periodo)]);

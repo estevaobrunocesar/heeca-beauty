@@ -14,7 +14,7 @@ const PESO = { negativo: 0, zerado: 1, baixo: 2, ok: 3 } as const;
 
 export default async function EstoquePage() {
   const ctx = await requireAuth();
-  if (!ctx.canManage) redirect("/app");
+  if (!ctx.can("estoque")) redirect("/app");
   const { tenant } = ctx;
 
   const [produtos, saldos] = await Promise.all([

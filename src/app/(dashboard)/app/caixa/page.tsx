@@ -16,7 +16,7 @@ const ROTULO = { confere: { t: "Confere", c: "tag-ok" }, sobra: { t: "Sobra", c:
 
 export default async function CaixaPage() {
   const ctx = await requireAuth();
-  if (!ctx.seesTeam) redirect("/app");
+  if (!ctx.can("caixa")) redirect("/app");
   const { tenant } = ctx;
   const tz = tenant.timezone;
 

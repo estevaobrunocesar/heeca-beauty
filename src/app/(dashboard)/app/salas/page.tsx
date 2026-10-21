@@ -14,7 +14,7 @@ import { BlocksManager } from "./blocks-manager";
  */
 export default async function SalasPage() {
   const ctx = await requireAuth();
-  if (!ctx.canManage) redirect("/app");
+  if (!ctx.can("salas")) redirect("/app");
   const { tenant } = ctx;
   if (!tenant.salasAtivas) redirect("/app/configuracoes/segmentos");
 

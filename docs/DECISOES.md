@@ -211,3 +211,15 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 **Descartado.** Profissional em várias unidades ao mesmo tempo (use "todas as unidades"), estoque/caixa/financeiro por unidade (seguem do estabelecimento todo) e horários de funcionamento por unidade.
 
 **Consequência.** Migração aditiva `20261025120000_units`.
+
+## 2026-10-26 — Permissões de usuários por módulo
+
+**Regra.** O perfil (dono, gerente, recepção, profissional) continua sendo o ponto de partida, e o **dono** liga ou desliga cada módulo por pessoa em Equipe → pessoa → Acesso ao painel. São 15 permissões (`lib/permissions/rules.ts`): agenda da equipe, campanhas, ajustar cashback, caixa, financeiro, ver e acertar comissões, relatórios, estoque, serviços, pacotes, portfólio, salas, equipe e configurações. Só a diferença para o padrão do perfil é gravada (`User.permissions`, JSON); trocar o perfil na tela volta as caixas ao padrão do novo perfil. O **dono nunca perde nenhuma** (senão ninguém desfaria o erro) e **gerenciar acessos continua só do dono**, mesmo para quem tem "Gerenciar a equipe".
+
+**Conferência no servidor.** `requireAuth()` devolve `ctx.can(chave)`; todas as páginas e ações dos módulos conferem a permissão (não só o menu). Quem tenta abrir sem permissão é redirecionado; exportação CSV responde 403. "Acertar comissões" exige "Ver comissões". `ctx.seesTeam` agora vem de "agenda da equipe" (mesmo padrão de antes: dono, gerente e recepção), então quem a recebe passa a operar a agenda de toda a equipe.
+
+**Compatibilidade.** Sem ajuste gravado, cada perfil mantém o que já tinha (gerente com tudo, recepção com agenda da equipe, profissional com a própria comissão); a recepção ganha por padrão os módulos novos de caixa e campanhas. Avaliações e protocolos (dados clínicos) seguem o perfil, não a matriz.
+
+**Descartado.** Perfis personalizados com nome (dá mais trabalho para pouca diferença sobre ajustar por pessoa), permissão por unidade e permissões somente de leitura (hoje é ver e operar o módulo).
+
+**Consequência.** Migração aditiva `20261026120000_user_permissions` (coluna `User.permissions`).

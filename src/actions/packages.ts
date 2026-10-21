@@ -16,7 +16,7 @@ const revalidate = (id?: string) => { revalidatePath("/app/pacotes"); revalidate
 
 async function manager() {
   const ctx = await requireAuth();
-  if (!ctx.canManage) throw new Error("Apenas a responsável pode gerenciar pacotes.");
+  if (!ctx.can("pacotes")) throw new Error("Apenas a responsável pode gerenciar pacotes.");
   return ctx;
 }
 

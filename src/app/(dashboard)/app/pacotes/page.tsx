@@ -17,7 +17,7 @@ import { FaltaToggle } from "./falta-toggle";
  */
 export default async function PacotesPage({ searchParams }: PageProps<"/app/pacotes">) {
   const ctx = await requireAuth();
-  if (!ctx.canManage) redirect("/app");
+  if (!ctx.can("pacotes")) redirect("/app");
   const { tenant } = ctx;
   const sp = await searchParams;
   const filtro = sp.status === "todos" ? undefined : "ACTIVE";

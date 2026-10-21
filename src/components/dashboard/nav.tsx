@@ -6,32 +6,33 @@ import { useState } from "react";
 
 export type NavRole = "OWNER" | "MANAGER" | "RECEPTION" | "STAFF";
 
-// Quem vê cada item (SPEC §6). "manage" = dono e gerente; "semRecepcao" = todos menos recepção (comissões e módulo clínico).
-const items: { href: string; label: string; icon: (p: IconProps) => React.JSX.Element; access: "all" | "manage" | "semRecepcao" | "equipe"; opcional?: "salas" | "clinico" }[] = [
+// Quem vê cada item: `perm` = permissão do módulo (lib/permissions, conferida de novo no servidor); sem `perm`, `access`
+// (avaliações e protocolos seguem o perfil por serem dados clínicos).
+const items: { href: string; label: string; icon: (p: IconProps) => React.JSX.Element; access: "all" | "manage" | "semRecepcao"; perm?: string; opcional?: "salas" | "clinico" }[] = [
   { href: "/app", label: "Início", icon: HomeIcon, access: "all" },
   { href: "/app/agenda", label: "Agenda", icon: CalendarIcon, access: "all" },
-  { href: "/app/servicos", label: "Serviços", icon: ServicesIcon, access: "manage" },
+  { href: "/app/servicos", label: "Serviços", icon: ServicesIcon, access: "manage", perm: "servicos" },
   { href: "/app/clientes", label: "Clientes", icon: UsersIcon, access: "all" },
-  { href: "/app/comissoes", label: "Comissões", icon: CommissionIcon, access: "semRecepcao" },
-  { href: "/app/financeiro", label: "Financeiro", icon: MoneyIcon, access: "manage" },
-  { href: "/app/caixa", label: "Caixa", icon: CashIcon, access: "equipe" },
-  { href: "/app/campanhas", label: "Campanhas", icon: CampaignIcon, access: "equipe" },
-  { href: "/app/relatorios", label: "Relatórios", icon: ReportIcon, access: "manage" },
-  { href: "/app/estoque", label: "Estoque", icon: StockIcon, access: "manage" },
-  { href: "/app/salas", label: "Salas", icon: RoomIcon, access: "manage", opcional: "salas" },
-  { href: "/app/pacotes", label: "Pacotes", icon: PackageIcon, access: "manage" },
+  { href: "/app/comissoes", label: "Comissões", icon: CommissionIcon, access: "all", perm: "comissoes" },
+  { href: "/app/financeiro", label: "Financeiro", icon: MoneyIcon, access: "manage", perm: "financeiro" },
+  { href: "/app/caixa", label: "Caixa", icon: CashIcon, access: "all", perm: "caixa" },
+  { href: "/app/campanhas", label: "Campanhas", icon: CampaignIcon, access: "all", perm: "campanhas" },
+  { href: "/app/relatorios", label: "Relatórios", icon: ReportIcon, access: "manage", perm: "relatorios" },
+  { href: "/app/estoque", label: "Estoque", icon: StockIcon, access: "manage", perm: "estoque" },
+  { href: "/app/salas", label: "Salas", icon: RoomIcon, access: "manage", perm: "salas", opcional: "salas" },
+  { href: "/app/pacotes", label: "Pacotes", icon: PackageIcon, access: "manage", perm: "pacotes" },
   { href: "/app/avaliacoes", label: "Avaliações", icon: AssessmentIcon, access: "semRecepcao", opcional: "clinico" },
   { href: "/app/protocolos", label: "Protocolos", icon: ProtocolIcon, access: "manage", opcional: "clinico" },
-  { href: "/app/portfolio", label: "Portfólio", icon: GalleryIcon, access: "manage" },
-  { href: "/app/equipe", label: "Equipe", icon: TeamIcon, access: "manage" },
-  { href: "/app/configuracoes", label: "Configurações", icon: SettingsIcon, access: "manage" },
+  { href: "/app/portfolio", label: "Portfólio", icon: GalleryIcon, access: "manage", perm: "portfolio" },
+  { href: "/app/equipe", label: "Equipe", icon: TeamIcon, access: "manage", perm: "equipe" },
+  { href: "/app/configuracoes", label: "Configurações", icon: SettingsIcon, access: "manage", perm: "configuracoes" },
 ];
 
-export function DashboardNav({ variant, role, salas = false, clinico = false }: { variant: "sidebar" | "bottom"; role: NavRole; salas?: boolean; clinico?: boolean }) {
+export function DashboardNav({ variant, role, permitidos, salas = false, clinico = false }: { variant: "sidebar" | "bottom"; role: NavRole; permitidos: string[]; salas?: boolean; clinico?: boolean }) {
   const canManage = role === "OWNER" || role === "MANAGER";
   const visible = items
     .filter((i) => !i.opcional || (i.opcional === "salas" && salas) || (i.opcional === "clinico" && clinico))
-    .filter((i) => i.access === "all" || (i.access === "manage" && canManage) || (i.access === "semRecepcao" && role !== "RECEPTION") || (i.access === "equipe" && role !== "STAFF"));
+    .filter((i) => (i.perm ? permitidos.includes(i.perm) : i.access === "all" || (i.access === "manage" && canManage) || (i.access === "semRecepcao" && role !== "RECEPTION")));
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/app" ? pathname === "/app" : pathname.startsWith(href));
 

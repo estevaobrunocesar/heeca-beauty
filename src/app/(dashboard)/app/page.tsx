@@ -98,11 +98,11 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
   const convite = fraseDeRetorno(segmentos);
   // Estoque: aviso para dono e gerente quando algum produto ativo está baixo, zerado ou negativo.
   let produtosParaRepor: string[] = [];
-  if (ctx.canManage) {
+  if (ctx.can("estoque")) {
     const [produtos, saldos] = await Promise.all([db.product.findMany({ where: { tenantId: tenant.id, active: true }, select: { id: true, name: true, minQuantity: true } }), saldosDoTenant(tenant.id)]);
     produtosParaRepor = produtos.filter((p) => precisaReposicao(situacaoDe(saldos.get(p.id) ?? 0, p.minQuantity))).map((p) => p.name);
   }
-  const pedirSegmentos = ctx.canManage && !escolheuSegmentos(marca, tenant);
+  const pedirSegmentos = ctx.can("configuracoes") && !escolheuSegmentos(marca, tenant);
 
   const ativosHoje = todayList.filter((a) => ACTIVE_STATUSES.includes(a.status) || a.status === "COMPLETED");
   const fatMes = (mes._sum.priceCents ?? 0) + (extrasMes._sum.amountCents ?? 0), fatAnterior = (mesAnterior._sum.priceCents ?? 0) + (extrasAnterior._sum.amountCents ?? 0);
@@ -221,7 +221,7 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
         {/* ─── coluna direita ─── */}
         <aside className="grid min-w-0 content-start gap-3">
           <section className="card min-w-0 p-4 text-center">
-            <div className="card-hd text-left"><h2 className="card-title">Meta do mês</h2>{ctx.canManage && <Link href="/app/configuracoes" className="link-mut">{meta ? "editar" : "definir"}</Link>}</div>
+            <div className="card-hd text-left"><h2 className="card-title">Meta do mês</h2>{ctx.can("configuracoes") && <Link href="/app/configuracoes" className="link-mut">{meta ? "editar" : "definir"}</Link>}</div>
             {meta ? (
               <>
                 <div className="my-1 grid place-items-center"><Ring pct={(fatMes / meta) * 100} /></div>

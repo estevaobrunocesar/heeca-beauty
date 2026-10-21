@@ -16,7 +16,8 @@ export type ShellProps = {
   tenant: { slug: string; businessName: string; heecaPlan: string | null; salasAtivas: boolean; clinicoAtivo: boolean };
   user: { name: string; email: string };
   role: NavRole;
-  canManage: boolean;
+  /** Módulos que a pessoa pode abrir (lib/permissions). */
+  permitidos: string[];
   professionalId: string;
   professionalLabel: string;
   pendentes: number;
@@ -33,7 +34,7 @@ const PLANOS: Record<string, { nome: string; proximo?: { nome: string; ganho: st
   "studio-plus": { nome: "Studio Plus" },
 };
 
-export function AppShell({ marca, tenant, user, role, canManage, professionalId, professionalLabel, pendentes, hoje, children }: ShellProps) {
+export function AppShell({ marca, tenant, user, role, permitidos, professionalId, professionalLabel, pendentes, hoje, children }: ShellProps) {
   const produto = (marca.slug in HEECA_PRODUCTS ? marca.slug : "heeca") as HeecaProduct;
   const plano = tenant.heecaPlan ? PLANOS[tenant.heecaPlan] ?? { nome: tenant.heecaPlan } : null;
   const nomeCurto = marca.nome.replace(/^Heeca /, "");
@@ -48,7 +49,7 @@ export function AppShell({ marca, tenant, user, role, canManage, professionalId,
             <span className="block truncate text-[11px] font-medium text-mut">{tenant.businessName}</span>
           </span>
         </Link>
-        <DashboardNav variant="sidebar" role={role} salas={tenant.salasAtivas} clinico={tenant.clinicoAtivo} />
+        <DashboardNav variant="sidebar" role={role} permitidos={permitidos} salas={tenant.salasAtivas} clinico={tenant.clinicoAtivo} />
         <div className="mt-auto space-y-3 pt-4">
           {plano && (
             <div className="rounded-[14px] border border-brand-100 bg-brand-50/60 p-4">
@@ -103,7 +104,7 @@ export function AppShell({ marca, tenant, user, role, canManage, professionalId,
             <a href={`/agendar/${tenant.slug}`} target="_blank" rel="noreferrer" className="hidden size-9 place-items-center rounded-[10px] border border-line bg-white text-ink-2 hover:bg-zinc-50 md:grid" title="Ver página pública">
               <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></svg>
             </a>
-            <Link href={canManage ? "/app/configuracoes" : `/app/equipe/${professionalId}`} className="flex items-center gap-2.5 md:pl-1">
+            <Link href={permitidos.includes("configuracoes") ? "/app/configuracoes" : `/app/equipe/${professionalId}`} className="flex items-center gap-2.5 md:pl-1">
               <Avatar name={user.name} photoUrl={null} size="sm" />
               <span className="hidden min-w-0 md:block">
                 <span className="block truncate text-[13px] font-semibold">{user.name}</span>
@@ -117,7 +118,7 @@ export function AppShell({ marca, tenant, user, role, canManage, professionalId,
           <div className="mx-auto max-w-[1240px]">{children}</div>
         </main>
       </div>
-      <DashboardNav variant="bottom" role={role} salas={tenant.salasAtivas} clinico={tenant.clinicoAtivo} />
+      <DashboardNav variant="bottom" role={role} permitidos={permitidos} salas={tenant.salasAtivas} clinico={tenant.clinicoAtivo} />
     </div>
   );
 }

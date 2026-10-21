@@ -1,4 +1,5 @@
 import "server-only";
+import { lerOverrides, permissoesEfetivas, type PermissionKey } from "@/lib/permissions/rules";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
@@ -83,7 +84,10 @@ export async function requireAuth() {
   const role = user.role;
   const isOwner = role === "OWNER";
   const canManage = role === "OWNER" || role === "MANAGER";
-  const seesTeam = canManage || role === "RECEPTION";
+  // Permissões por módulo: padrão do perfil + ajustes do dono por pessoa (lib/permissions). O dono nunca perde nada.
+  const permissions = permissoesEfetivas(role, lerOverrides(user.permissions));
+  const can = (key: PermissionKey) => permissions.has(key);
+  const seesTeam = can("agenda_equipe");
   const all = await db.professional.findMany({
     where: { tenantId: user.tenantId, ...(seesTeam ? {} : { id: user.professional?.id ?? "__none__" }) },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -93,7 +97,7 @@ export async function requireAuth() {
   // "Profissional padrão" do usuário: o próprio (se vinculado) ou o primeiro da equipe.
   const professional = user.professional ?? all[0];
 
-  return { user, tenant: user.tenant, professional, professionals: all, role, isOwner, canManage, seesTeam };
+  return { user, tenant: user.tenant, professional, professionals: all, role, isOwner, canManage, seesTeam, permissions, can };
 }
 
 export type AuthContext = Awaited<ReturnType<typeof requireAuth>>;

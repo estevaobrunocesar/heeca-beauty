@@ -7,7 +7,7 @@ import { roomOptionsFor } from "@/lib/rooms-db";
 
 export default async function NewServicePage({ searchParams }: PageProps<"/app/servicos/novo">) {
   const ctx = await requireAuth();
-  if (!ctx.canManage) redirect("/app");
+  if (!ctx.can("servicos")) redirect("/app");
   const sp = await searchParams;
   const addOn = sp.tipo === "adicional";
   const [categories, roomOptions] = await Promise.all([listCategories(ctx.tenant.id), roomOptionsFor(ctx.tenant)]);

@@ -15,7 +15,7 @@ import { SellForm } from "./sell-form";
  */
 export default async function VenderPacotePage({ searchParams }: PageProps<"/app/pacotes/novo">) {
   const ctx = await requireAuth();
-  if (!ctx.canManage) redirect("/app");
+  if (!ctx.can("pacotes")) redirect("/app");
   const sp = await searchParams;
   const clinico = moduloClinicoAtivo(ctx.tenant.segmentos);
   const tenantId = ctx.tenant.id;

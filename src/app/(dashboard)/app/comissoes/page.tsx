@@ -37,7 +37,7 @@ const monthLabel = (month: string) => { const [y, m] = month.split("-").map(Numb
 export default async function CommissionsPage({ searchParams }: PageProps<"/app/comissoes">) {
   const sp = await searchParams;
   const ctx = await requireAuth();
-  if (ctx.role === "RECEPTION") redirect("/app"); // recepção não vê comissões (SPEC §6)
+  if (!ctx.can("comissoes")) redirect("/app");
   const { tenant } = ctx;
   const tz = tenant.timezone;
   const month = typeof sp.mes === "string" && MONTH_RE.test(sp.mes) ? sp.mes : todayKey(tz).slice(0, 7);
@@ -60,7 +60,7 @@ export default async function CommissionsPage({ searchParams }: PageProps<"/app/
     <>
       <PageHeader
         title="Comissões"
-        description={ctx.canManage ? "Fechamento por profissional: o que foi apurado nas visitas concluídas e o que ainda falta acertar." : "Sua comissão nas visitas concluídas."}
+        description={ctx.seesTeam ? "Fechamento por profissional: o que foi apurado nas visitas concluídas e o que ainda falta acertar." : "Sua comissão nas visitas concluídas."}
         actions={
           <div className="flex items-center gap-2 text-sm">
             <Link href={`/app/comissoes?mes=${shiftMonth(month, -1)}`} className="btn-ghost px-2 py-1">‹</Link>
@@ -74,7 +74,7 @@ export default async function CommissionsPage({ searchParams }: PageProps<"/app/
         <EmptyState title="Nenhuma visita concluída neste mês" description="A comissão é apurada quando a visita é marcada como concluída na agenda." />
       ) : (
         <div className="space-y-6">
-          {ctx.canManage && (
+          {ctx.seesTeam && (
             <div className="grid gap-3 sm:grid-cols-4">
               <Stat label="Serviços concluídos" value={String(total.count)} />
               <Stat label="Faturamento" value={formatCents(total.revenueCents)} />
@@ -106,7 +106,7 @@ export default async function CommissionsPage({ searchParams }: PageProps<"/app/
                     </dl>
                     <div className="flex items-center gap-3">
                       <Link href={`/app/comissoes?mes=${month}${open ? "" : `&pro=${p.id}`}`} className="text-xs text-brand-700 hover:underline">{open ? "Ocultar" : "Detalhar"}</Link>
-                      {ctx.canManage && <MarkPaidButton professionalId={p.id} fromIso={fromUtc.toISOString()} toIso={toUtc.toISOString()} pendingCents={s.pendingCents} />}
+                      {ctx.can("comissoes_acertar") && <MarkPaidButton professionalId={p.id} fromIso={fromUtc.toISOString()} toIso={toUtc.toISOString()} pendingCents={s.pendingCents} />}
                     </div>
                   </div>
                   {open && (

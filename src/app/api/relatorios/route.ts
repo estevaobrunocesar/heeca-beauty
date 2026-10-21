@@ -17,7 +17,7 @@ const STATUS: Record<string, string> = {
 export async function GET(req: Request) {
   if (!(await getSession())) return NextResponse.json({ ok: false, error: "Sessão expirada. Entre novamente." }, { status: 401 });
   const ctx = await requireAuth();
-  if (!ctx.canManage) return NextResponse.json({ ok: false, error: "Sem permissão para exportar relatórios." }, { status: 403 });
+  if (!ctx.can("relatorios")) return NextResponse.json({ ok: false, error: "Sem permissão para exportar relatórios." }, { status: 403 });
 
   const url = new URL(req.url);
   const tipo = (TIPOS as readonly string[]).includes(url.searchParams.get("tipo") ?? "") ? (url.searchParams.get("tipo") as Tipo) : "atendimentos";

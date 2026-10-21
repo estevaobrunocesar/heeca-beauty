@@ -16,7 +16,7 @@ const revalidate = () => { revalidatePath("/app/salas"); revalidatePath("/app/ag
 
 async function manager() {
   const ctx = await requireAuth();
-  if (!ctx.canManage) throw new Error("Apenas a responsável pode gerenciar salas e recursos.");
+  if (!ctx.can("salas")) throw new Error("Apenas a responsável pode gerenciar salas e recursos.");
   return ctx;
 }
 

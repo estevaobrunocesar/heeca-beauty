@@ -9,7 +9,7 @@ import { AppShell } from "@/components/dashboard/shell";
 const PAPEIS = { OWNER: "dona", MANAGER: "gerente", RECEPTION: "recepção", STAFF: "profissional" } as const;
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { tenant, user, role, canManage, professional, professionals } = await requireAuth();
+  const { tenant, user, role, permissions, professional, professionals } = await requireAuth();
   const marca = marcaDoTenant(tenant);
   // Pendências do sino: visitas da minha equipe ainda sem confirmação da cliente.
   const pendentes = await db.appointment.count({
@@ -25,7 +25,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         tenant={{ slug: tenant.slug, businessName: tenant.businessName, heecaPlan: tenant.heecaPlan, salasAtivas: tenant.salasAtivas, clinicoAtivo: moduloClinicoAtivo(tenant.segmentos) }}
         user={{ name: user.name, email: user.email }}
         role={role}
-        canManage={canManage}
+        permitidos={[...permissions]}
         professionalId={professional.id}
         professionalLabel={[especialidade, PAPEIS[role]].filter(Boolean).join(" · ")}
         pendentes={pendentes}

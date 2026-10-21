@@ -18,7 +18,7 @@ const dia = (key: string) => key.slice(8, 10) + "/" + key.slice(5, 7);
 export default async function RelatoriosPage({ searchParams }: PageProps<"/app/relatorios">) {
   const sp = await searchParams;
   const ctx = await requireAuth();
-  if (!ctx.canManage) redirect("/app");
+  if (!ctx.can("relatorios")) redirect("/app");
   const tz = ctx.tenant.timezone;
   const periodo = parsePeriodo(sp, tz);
   const unidades = await db.unit.findMany({ where: { tenantId: ctx.tenant.id, active: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } });

@@ -12,7 +12,7 @@ const revalidate = () => revalidatePath("/app/campanhas");
 /** Registra que a mensagem da campanha foi enviada à cliente neste período (aniversário: o ano; reativação: o mês). */
 export async function markCampaignSentAction(clientId: string, kind: CampaignKind, dia: string): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.seesTeam) return fail("Sem permissão para registrar envios.");
+  if (!ctx.can("campanhas")) return fail("Sem permissão para registrar envios.");
   if (kind !== "BIRTHDAY" && kind !== "REACTIVATION") return fail("Campanha inválida");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return fail("Data inválida");
   const client = await db.client.findFirst({ where: { id: clientId, tenantId: ctx.tenant.id }, select: { id: true } });
@@ -28,7 +28,7 @@ export async function markCampaignSentAction(clientId: string, kind: CampaignKin
 
 export async function desfazerEnvioAction(clientId: string, kind: CampaignKind, dia: string): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.seesTeam) return fail("Sem permissão.");
+  if (!ctx.can("campanhas")) return fail("Sem permissão.");
   if (kind !== "BIRTHDAY" && kind !== "REACTIVATION") return fail("Campanha inválida");
   await db.campaignSend.deleteMany({
     where: { tenantId: ctx.tenant.id, clientId, kind, periodKey: periodoDaCampanha(kind, kind === "REACTIVATION" ? todayKey(ctx.tenant.timezone) : dia) },
@@ -40,7 +40,7 @@ export async function desfazerEnvioAction(clientId: string, kind: CampaignKind, 
 /** Textos das mensagens (com {nome} e {estabelecimento}) e a regra de reativação. Só dono e gerente. */
 export async function saveCampaignSettingsAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.canManage) return fail("Apenas a responsável pode alterar as campanhas.");
+  if (!ctx.can("configuracoes")) return fail("Sem permissão para alterar as campanhas.");
   const birthday = String(formData.get("birthdayMessage") ?? "").trim();
   const reactivation = String(formData.get("reactivationMessage") ?? "").trim();
   const dias = Number(String(formData.get("reactivationDays") ?? "").trim());

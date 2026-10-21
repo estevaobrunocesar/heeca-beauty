@@ -47,7 +47,7 @@ function parseCnpj(raw: string): string | null | false {
 
 export async function updateBusinessAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.canManage) return fail("Apenas a responsável pode alterar os dados do negócio.");
+  if (!ctx.can("configuracoes")) return fail("Apenas a responsável pode alterar os dados do negócio.");
   const { tenant, user } = ctx;
   const parsed = businessSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail(parsed.error.issues[0].message);
@@ -113,7 +113,7 @@ const rulesSchema = z.object({
 /** Regras de agendamento do estabelecimento. Horários semanais ficam em cada profissional. */
 export async function updateScheduleAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.canManage) return fail("Apenas a responsável pode alterar as regras.");
+  if (!ctx.can("configuracoes")) return fail("Apenas a responsável pode alterar as regras.");
 
   const parsed = rulesSchema.safeParse({
     ...Object.fromEntries(formData),
@@ -149,7 +149,7 @@ const policiesSchema = z.object({
 
 export async function updatePoliciesAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.canManage) return fail("Apenas a responsável pode alterar as políticas.");
+  if (!ctx.can("configuracoes")) return fail("Apenas a responsável pode alterar as políticas.");
   const parsed = policiesSchema.safeParse({
     ...Object.fromEntries(formData),
     companionsAllowed: formData.get("companionsAllowed") === "on",
@@ -205,7 +205,7 @@ export async function updateTemplatesAction(_prev: ActionResult, formData: FormD
  */
 export async function updateSegmentosAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.canManage) return fail("Apenas a responsável pode alterar os segmentos.");
+  if (!ctx.can("configuracoes")) return fail("Apenas a responsável pode alterar os segmentos.");
   const marca = marcaDoTenant(ctx.tenant);
   const escolhidos = marca.segmentos.map((s) => s.slug).filter((slug) => formData.get(`segmento.${slug}`) === "on");
   if (escolhidos.length === 0) return fail("Marque ao menos um segmento.");
@@ -229,7 +229,7 @@ const pageColorSchema = z.object({ pageColor: z.string().trim().max(20).optional
  */
 export async function updatePageColorAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.canManage) return fail("Apenas a responsável pode alterar a aparência da página.");
+  if (!ctx.can("configuracoes")) return fail("Apenas a responsável pode alterar a aparência da página.");
   const parsed = pageColorSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail("Cor inválida.");
   const bruto = parsed.data.pageColor ?? "";

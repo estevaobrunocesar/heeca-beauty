@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: "Serviços" };
 
 export default async function ServicesPage() {
   const ctx = await requireAuth();
-  if (!ctx.canManage) redirect("/app");
+  if (!ctx.can("servicos")) redirect("/app");
   const { tenant } = ctx;
   const [services, categories] = await Promise.all([
     db.service.findMany({ where: { tenantId: tenant.id, deletedAt: null }, orderBy: { sortOrder: "asc" } }),

@@ -20,7 +20,7 @@ import { saldoDoCashback } from "@/lib/loyalty/rules";
 
 export default async function ClientDetailPage({ params }: PageProps<"/app/clientes/[id]">) {
   const { id } = await params;
-  const { tenant, canManage } = await requireAuth();
+  const { tenant, can } = await requireAuth();
   const client = await db.client.findFirst({
     where: { id, tenantId: tenant.id },
     include: {
@@ -93,7 +93,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
 
           {(tenant.cashbackPercent > 0 || client.cashbackEntries.length > 0) && (
             <CashbackCard
-              clientId={client.id} percent={tenant.cashbackPercent} canAdjust={canManage}
+              clientId={client.id} percent={tenant.cashbackPercent} canAdjust={can("cashback_ajustar")}
               saldoCents={saldoDoCashback(client.cashbackEntries)}
               linhas={client.cashbackEntries.slice(0, 8).map((e) => ({ id: e.id, when: fmtDate(e.createdAt, tenant.timezone), label: e.kind, note: e.note, cents: e.amountCents }))}
             />

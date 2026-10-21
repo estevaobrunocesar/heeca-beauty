@@ -8,6 +8,8 @@ import { hashPassword } from "@/lib/auth/password";
 import { hhmmToMinutes, WEEKDAY_NAMES } from "@/lib/dates";
 import { fail, success, type ActionResult } from "@/lib/action-result";
 import { discardReplaced, guardImageUrl, IMAGE_REJECTED } from "@/lib/storage/guard";
+import { PERMISSION_KEYS, normalizarMarcadas, overridesDoMarcado, type PermissionKey } from "@/lib/permissions/rules";
+import { Prisma } from "@/generated/prisma/client";
 
 const profileSchema = z.object({
   name: z.string().trim().min(2, "Informe o nome").max(80),
@@ -31,7 +33,7 @@ function revalidateTeam(id?: string) {
 
 export async function createProfessionalAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.canManage) return fail("Apenas o responsável pode adicionar profissionais.");
+  if (!ctx.can("equipe")) return fail("Sem permissão para adicionar profissionais.");
   const parsed = profileSchema.safeParse({ ...Object.fromEntries(formData), active: true });
   if (!parsed.success) return fail(parsed.error.issues[0].message);
   const d = parsed.data;
@@ -70,7 +72,7 @@ export async function updateProfessionalAction(id: string, _prev: ActionResult, 
   const ctx = await requireAuth();
   requireProfessionalAccess(ctx, id);
   // Sem perfil de gestão, só o próprio perfil (a recepção enxerga a equipe, mas não a edita).
-  if (!ctx.canManage && ctx.user.professional?.id !== id) return fail("Você só pode editar o seu próprio perfil.");
+  if (!ctx.can("equipe") && ctx.user.professional?.id !== id) return fail("Você só pode editar o seu próprio perfil.");
   const parsed = profileSchema.safeParse({ ...Object.fromEntries(formData), active: formData.get("active") === "on" });
   if (!parsed.success) return fail(parsed.error.issues[0].message);
   const d = parsed.data;
@@ -99,11 +101,11 @@ export async function updateProfessionalAction(id: string, _prev: ActionResult, 
       data: {
         name: d.name, bio: d.bio || null, photoUrl: photo.url,
         phone: d.phone || null, email: d.email || null, specialties: d.specialties || null,
-        ...(ctx.canManage ? { active: d.active ?? false, commissionPercent: pct(d.commissionPercent) } : {}),
-        ...(ctx.canManage && formData.has("unitId") ? { unitId: unitId } : {}),
+        ...(ctx.can("equipe") ? { active: d.active ?? false, commissionPercent: pct(d.commissionPercent) } : {}),
+        ...(ctx.can("equipe") && formData.has("unitId") ? { unitId: unitId } : {}),
       },
     });
-    if (ctx.canManage) {
+    if (ctx.can("equipe")) {
       await tx.professionalService.deleteMany({ where: { professionalId: id } });
       if (serviceIds.length) {
         const valid = await tx.service.findMany({ where: { id: { in: serviceIds }, tenantId: ctx.tenant.id }, select: { id: true } });
@@ -118,7 +120,7 @@ export async function updateProfessionalAction(id: string, _prev: ActionResult, 
 
 export async function moveProfessionalAction(id: string, direction: "up" | "down") {
   const ctx = await requireAuth();
-  if (!ctx.canManage) return;
+  if (!ctx.can("equipe")) return;
   const list = await db.professional.findMany({ where: { tenantId: ctx.tenant.id }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
   const idx = list.findIndex((p) => p.id === id);
   const swap = direction === "up" ? idx - 1 : idx + 1;
@@ -163,6 +165,13 @@ const accessSchema = z.object({
   role: z.enum(["STAFF", "RECEPTION", "MANAGER"]).default("STAFF"),
 });
 
+/** Lê as caixas marcadas (perm_<chave>) e devolve só o que difere do padrão do perfil; vazio = sem ajustes. */
+function permissoesDoFormulario(formData: FormData, role: "STAFF" | "RECEPTION" | "MANAGER") {
+  const marcadas = new Set<PermissionKey>(PERMISSION_KEYS.filter((k) => formData.get(`perm_${k}`) === "on"));
+  const diff = overridesDoMarcado(role, normalizarMarcadas(marcadas));
+  return { json: Object.keys(diff).length ? (diff as Prisma.InputJsonValue) : Prisma.JsonNull };
+}
+
 /** Cria ou atualiza o login vinculado ao profissional, com o perfil escolhido (STAFF, RECEPTION ou MANAGER). */
 export async function setProfessionalAccessAction(id: string, _prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
@@ -171,6 +180,8 @@ export async function setProfessionalAccessAction(id: string, _prev: ActionResul
   const parsed = accessSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail(parsed.error.issues[0].message);
   const { email, password, role } = parsed.data;
+  // Permissões por módulo: guardamos só o que difere do padrão do perfil. Sem o campo no formulário, não mexe.
+  const overrides = formData.has("permsSent") ? permissoesDoFormulario(formData, role) : undefined;
 
   const existing = await db.user.findUnique({ where: { email } });
   if (existing && existing.id !== pro.userId) return fail("Este e-mail já está em uso por outra conta.");
@@ -180,12 +191,12 @@ export async function setProfessionalAccessAction(id: string, _prev: ActionResul
     if (current?.role === "OWNER") return fail("O perfil do responsável não muda por aqui.");
     await db.user.update({
       where: { id: pro.userId },
-      data: { email, name: pro.name, role, ...(password ? { passwordHash: await hashPassword(password) } : {}) },
+      data: { email, name: pro.name, role, ...(overrides ? { permissions: overrides.json } : {}), ...(password ? { passwordHash: await hashPassword(password) } : {}) },
     });
   } else {
     if (!password) return fail("Defina uma senha inicial para o novo acesso.");
     const user = await db.user.create({
-      data: { tenantId: ctx.tenant.id, name: pro.name, email, passwordHash: await hashPassword(password), role },
+      data: { tenantId: ctx.tenant.id, name: pro.name, email, passwordHash: await hashPassword(password), role, ...(overrides ? { permissions: overrides.json } : {}) },
     });
     await db.professional.update({ where: { id }, data: { userId: user.id } });
   }

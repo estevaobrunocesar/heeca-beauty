@@ -11,7 +11,7 @@ import { fail, success, type ActionResult } from "@/lib/action-result";
  */
 export async function markCommissionsPaidAction(professionalId: string, fromIso: string, toIso: string): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.canManage) return fail("Apenas o responsável pode acertar comissões.");
+  if (!ctx.can("comissoes_acertar")) return fail("Apenas o responsável pode acertar comissões.");
   const from = new Date(fromIso);
   const to = new Date(toIso);
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to <= from) return fail("Período inválido");

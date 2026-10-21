@@ -13,7 +13,7 @@ const MAX = 200;
 export default async function HistoricoDoProdutoPage({ params }: PageProps<"/app/estoque/[id]">) {
   const { id } = await params;
   const ctx = await requireAuth();
-  if (!ctx.canManage) redirect("/app");
+  if (!ctx.can("estoque")) redirect("/app");
   const { tenant } = ctx;
 
   const produto = await db.product.findFirst({ where: { id, tenantId: tenant.id } });

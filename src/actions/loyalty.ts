@@ -14,7 +14,7 @@ const revalidateClient = (id: string) => { revalidatePath(`/app/clientes/${id}`)
 /** Liga/desliga a fidelidade e define o percentual. Só dono e gerente. */
 export async function setCashbackPercentAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.canManage) return fail("Apenas a responsável pode alterar a fidelidade.");
+  if (!ctx.can("configuracoes")) return fail("Sem permissão para alterar a fidelidade.");
   const v = validarPercentual(Number(String(formData.get("percent") ?? "").trim() || 0));
   if (!v.ok) return fail(v.error);
   await db.tenant.update({ where: { id: ctx.tenant.id }, data: { cashbackPercent: v.percent } });
@@ -47,7 +47,7 @@ export async function redeemCashbackAction(clientId: string, _prev: ActionResult
 /** Bônus ou correção manual do saldo. Só dono e gerente; exige motivo. */
 export async function adjustCashbackAction(clientId: string, _prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
-  if (!ctx.canManage) return fail("Apenas a responsável pode ajustar o saldo.");
+  if (!ctx.can("cashback_ajustar")) return fail("Sem permissão para ajustar o saldo.");
   const client = await db.client.findFirst({ where: { id: clientId, tenantId: ctx.tenant.id }, select: { id: true } });
   if (!client) return fail("Cliente não encontrada");
   const cents = parseMoneyToCents(String(formData.get("amount") ?? ""));

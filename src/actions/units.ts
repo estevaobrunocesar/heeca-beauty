@@ -17,7 +17,7 @@ const revalidate = () => {
 
 async function manager() {
   const ctx = await requireAuth();
-  if (!ctx.canManage) throw new Error("Apenas a responsável pode gerenciar as unidades.");
+  if (!ctx.can("configuracoes")) throw new Error("Sem permissão para gerenciar as unidades.");
   return ctx;
 }
 

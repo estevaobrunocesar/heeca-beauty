@@ -25,7 +25,7 @@ function parse(formData: FormData) {
 
 async function owner() {
   const ctx = await requireAuth();
-  if (!ctx.canManage) return null;
+  if (!ctx.can("portfolio")) return null;
   return ctx;
 }
 
