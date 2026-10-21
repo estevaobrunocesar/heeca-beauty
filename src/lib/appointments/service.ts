@@ -613,3 +613,70 @@ export async function completeAppointment(input: { appointmentId: string; tenant
   }
   return created;
 }
+
+// ───────────── Trocar o profissional de um serviço do agendamento ─────────────
+
+/**
+ * Troca quem faz um serviço de um agendamento ativo (a cliente chegou e preferiu outro profissional). A comissão é apurada
+ * ao concluir, por item, no profissional gravado nele: trocar ANTES de concluir leva a comissão a quem atendeu.
+ * O novo profissional precisa fazer o serviço e estar livre no mesmo horário (agenda, sala e recursos); o horário não muda.
+ * Fica registrado no histórico (quem trocou, de quem para quem).
+ */
+export async function changeItemProfessional(input: { tenant: Tenant; appointmentId: string; itemId: string; professionalId: string; actor: AppointmentActor }) {
+  const { tenant } = input;
+  const tz = tenant.timezone;
+  const appt = await db.appointment.findFirst({
+    where: { id: input.appointmentId, tenantId: tenant.id },
+    include: { items: { orderBy: { sortOrder: "asc" }, include: { resources: { select: { resourceId: true, quantity: true } } } } },
+  });
+  if (!appt) throw new AppointmentError("Agendamento não encontrado.", "NOT_FOUND");
+  if (!ACTIVE_STATUSES.includes(appt.status)) throw new AppointmentError("Só dá para trocar o profissional de agendamentos ativos, antes de concluir.", "NOT_ACTIVE");
+  const item = appt.items.find((i) => i.id === input.itemId);
+  if (!item) throw new AppointmentError("Serviço não encontrado neste agendamento.", "NOT_FOUND");
+  if (item.professionalId === input.professionalId) throw new AppointmentError("Este serviço já está com esse profissional.", "SAME_PROFESSIONAL");
+
+  const [novo, antigo, vinculo] = await Promise.all([
+    db.professional.findFirst({ where: { id: input.professionalId, tenantId: tenant.id, active: true }, select: { id: true, name: true } }),
+    db.professional.findUnique({ where: { id: item.professionalId }, select: { name: true } }),
+    db.professionalService.findFirst({ where: { professionalId: input.professionalId, serviceId: item.serviceId } }),
+  ]);
+  if (!novo) throw new AppointmentError("Profissional não encontrado.", "NOT_FOUND");
+  if (!vinculo) throw new AppointmentError(`${novo.name} não realiza "${item.serviceName}".`, "PROFESSIONAL_MISMATCH");
+
+  // O mesmo horário, agora para o novo profissional: ele precisa estar livre (e a sala/recursos do item continuam livres).
+  const dateKey = toDateKey(item.startsAt, tz);
+  const start = toMinutesOfDay(item.startsAt, tz);
+  const end = toMinutesOfDay(item.endsAt, tz);
+  const demais: ExistingItem[] = appt.items.filter((i) => i.id !== item.id).map((i) => ({
+    professionalId: i.professionalId, roomId: i.roomId, start: toMinutesOfDay(i.startsAt, tz), end: toMinutesOfDay(i.endsAt, tz),
+    bufferBeforeMinutes: i.bufferBeforeMinutes, bufferAfterMinutes: i.bufferAfterMinutes, resources: i.resources,
+  }));
+  const visitItem: VisitItem = {
+    key: item.id, durationMinutes: end - start, candidates: [novo.id],
+    roomCandidates: item.roomId ? [item.roomId] : null, resources: item.resources,
+    bufferBeforeMinutes: item.bufferBeforeMinutes, bufferAfterMinutes: item.bufferAfterMinutes,
+  };
+  const placements = await placeItemsInVisit({ tenant, items: [visitItem], existing: demais, dateKey, startMinutes: start, parallel: false, excludeAppointmentId: appt.id });
+  if (!placements || placements[0].start !== start) {
+    throw new AppointmentError(`${novo.name} não está livre das ${minutesToHHMM(start)} às ${minutesToHHMM(end)} para esse serviço.`, "SLOT_UNAVAILABLE");
+  }
+
+  return db.$transaction(
+    async (tx) => {
+      // Proteção contra corrida: outra recepção marcando o novo profissional nesse horário ao mesmo tempo.
+      const concorrentes = await tx.appointmentItem.count({
+        where: { professionalId: novo.id, appointmentId: { not: appt.id }, appointment: { status: { in: ACTIVE_STATUSES } }, startsAt: { lt: item.endsAt }, endsAt: { gt: item.startsAt } },
+      });
+      if (concorrentes >= tenant.maxConcurrentAppointments) throw new AppointmentError(`${novo.name} acabou de ser reservado(a) nesse horário.`, "SLOT_UNAVAILABLE");
+      const atualizado = await tx.appointmentItem.update({ where: { id: item.id }, data: { professionalId: novo.id, commissionCents: null } });
+      await tx.appointmentEvent.create({
+        data: {
+          tenantId: tenant.id, appointmentId: appt.id, actor: input.actor, type: "PROFESSIONAL_CHANGED",
+          data: { itemId: item.id, serviceName: item.serviceName, fromProfessionalId: item.professionalId, fromName: antigo?.name ?? null, toProfessionalId: novo.id, toName: novo.name },
+        },
+      });
+      return atualizado;
+    },
+    { isolationLevel: "Serializable" },
+  );
+}

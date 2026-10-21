@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireAuth, resolveProfessional, type AuthContext } from "@/lib/auth/session";
-import { addServiceToAppointment, AppointmentError, completeAppointment, createAppointment, MAX_ITEMS_PER_VISIT, reschedule, transition } from "@/lib/appointments/service";
+import { addServiceToAppointment, AppointmentError, changeItemProfessional, completeAppointment, createAppointment, MAX_ITEMS_PER_VISIT, reschedule, transition } from "@/lib/appointments/service";
 import { parseExtras, type ExtraInput } from "@/lib/appointments/charges";
 import { sendAppointmentMessage } from "@/lib/whatsapp/service";
 import type { AppointmentStatus } from "@/generated/prisma/enums";
@@ -168,6 +168,20 @@ export async function completeAppointmentAction(id: string, extras: ExtraInput[]
     await completeAppointment({ appointmentId: id, tenantId: ctx.tenant.id, actor: "PROFESSIONAL", extras: parsed.extras });
     revalidateAgenda(id);
     return success();
+  } catch (e) {
+    return fail(errMessage(e));
+  }
+}
+
+/** Troca o profissional de um serviço do agendamento (a cliente chegou e preferiu outro). Só quem vê a equipe (dono, gerente, recepção). */
+export async function changeProfessionalAction(input: { appointmentId: string; itemId: string; professionalId: string }): Promise<ActionResult> {
+  const ctx = await requireAuth();
+  if (!ctx.seesTeam) return fail("Só a recepção e a gestão trocam o profissional do atendimento.");
+  if (!(await loadAccessible(ctx, input.appointmentId))) return fail("Agendamento não encontrado");
+  try {
+    await changeItemProfessional({ tenant: ctx.tenant, appointmentId: input.appointmentId, itemId: input.itemId, professionalId: input.professionalId, actor: "PROFESSIONAL" });
+    revalidateAgenda(input.appointmentId);
+    return success("Profissional trocado.");
   } catch (e) {
     return fail(errMessage(e));
   }

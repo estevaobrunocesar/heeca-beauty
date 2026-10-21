@@ -147,3 +147,13 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 **Descartado.** (1) Editar/remover serviços já marcados: não foi pedido; fica como evolução. (2) Gravar os adicionais em `Appointment.priceCents`: misturaria produto com serviço e a comissão passaria a incidir sobre ele. (3) Adicionais depois de concluído: por ora só no ato de concluir. (4) Opção só do Studio21: o recurso é geral.
 
 **Consequência.** Migração aditiva `20261021120000_appointment_charges` (cria `AppointmentCharge`). `AppointmentEvent.type` é texto livre, então os dois tipos de evento novos não pedem migração.
+
+## 2026-10-21 — Trocar o profissional de um serviço antes de concluir (pedido do Studio21)
+
+**Contexto.** A cliente agenda com uma profissional e, ao chegar, prefere outra. Sem trocar, a comissão seria apurada para quem não atendeu.
+
+**Regra.** Na página do agendamento, cada serviço ativo tem "Trocar profissional" (só OWNER/MANAGER/RECEPTION; STAFF não). Vale enquanto o agendamento não está concluído, cancelado ou com falta. O novo profissional precisa estar ativo, fazer aquele serviço e estar livre **no mesmo horário** (agenda, sala e recursos, via `placeItemsInVisit` sem contar a própria visita); senão a tela diz o motivo e nada muda. Horário e duração não mudam. A comissão é apurada só ao concluir, sobre o profissional do item naquele momento, então passa a seguir quem atendeu de fato; o valor `commissionCents` do item é zerado na troca. Histórico `PROFESSIONAL_CHANGED` (de → para, quem fez).
+
+**Descartado.** (1) Trocar também o horário: é reagendar, que já existe. (2) Trocar depois de concluído: a comissão já foi fixada.
+
+**Consequência.** Só código; sem migração.

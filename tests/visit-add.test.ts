@@ -65,3 +65,27 @@ describe("acrescentar serviço a uma visita já marcada (placeAddedItems)", () =
     assert.equal(placeAddedItems({ startMinutes: H(10, 30), items: [SO_S1], existing: [cabelo({ roomId: "s1" })], ctx, parallel: false }), null);
   });
 });
+
+describe("trocar o profissional de um serviço (mesmo horário, novo profissional)", () => {
+  const ctx = (extra: Record<string, { startsAt: Date; endsAt: Date }[]> = {}) =>
+    contextFromDays({ days: new Map([["ana", day(extra.ana)], ["mariana", day(extra.mariana)], ["carlos", day(extra.carlos)]]) });
+  // o serviço trocado: 10:00–11:00; os outros itens da visita entram em `existing`
+  const SERVICO: VisitItem = { key: "x", durationMinutes: 60, candidates: ["carlos"] };
+
+  it("novo profissional livre: continua exatamente no mesmo horário", () => {
+    const p = placeAddedItems({ startMinutes: H(10), items: [SERVICO], existing: [], ctx: ctx(), parallel: false })!;
+    assert.deepEqual([p[0].professionalId, p[0].start, p[0].end], ["carlos", H(10), H(11)]);
+  });
+
+  it("novo profissional com outro cliente no horário: não troca", () => {
+    assert.equal(placeAddedItems({ startMinutes: H(10), items: [SERVICO], existing: [], ctx: ctx({ carlos: [range(H(10, 30), H(11, 30))] }), parallel: false }), null);
+  });
+
+  it("novo profissional já faz outro serviço desta mesma visita no mesmo horário: não troca (dois lugares ao mesmo tempo)", () => {
+    const outro = cabelo({ professionalId: "carlos", start: H(10), end: H(10, 45) });
+    assert.equal(placeAddedItems({ startMinutes: H(10), items: [SERVICO], existing: [outro], ctx: ctx(), parallel: false }), null);
+    // se o outro serviço dele já terminou, pode
+    const antes = cabelo({ professionalId: "carlos", start: H(9), end: H(10) });
+    assert.ok(placeAddedItems({ startMinutes: H(10), items: [SERVICO], existing: [antes], ctx: ctx(), parallel: false }));
+  });
+});
