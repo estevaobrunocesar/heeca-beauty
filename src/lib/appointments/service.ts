@@ -19,6 +19,8 @@ import { describeVisit, visitTotals } from "./summary";
 import { commissionCentsFor } from "@/lib/commissions";
 import { baixarEstoqueDoAtendimento, estornarEstoqueDoAtendimento } from "@/lib/stock/db";
 import { valeNaUnidade, unidadeDaVisita } from "@/lib/units/rules";
+import { isValidCpf, onlyCpfDigits } from "@/lib/cpf";
+import { pixProviderName } from "@/lib/payments";
 import { creditarCashbackDoAtendimento, estornarCashbackDoAtendimento } from "@/lib/loyalty/db";
 
 export class AppointmentError extends Error {
@@ -45,7 +47,7 @@ type CreateInput = {
   dateKey: string;
   minutes: number; // início da visita (minutos do dia no fuso do tenant)
   /** phone: obrigatório, a não ser que o estabelecimento dispense (Tenant.requirePhone = false). */
-  client: { name: string; phone?: string | null; email?: string | null };
+  client: { name: string; phone?: string | null; email?: string | null; /** CPF da cliente: exigido só quando há sinal via Pix (Asaas). */ cpf?: string | null };
   notes?: string | null;
   source: AppointmentSource;
   actor: AppointmentActor;
@@ -179,6 +181,9 @@ export async function createAppointment(input: CreateInput) {
   // Confirmação automática quando o profissional dispensa WhatsApp ou agenda manualmente.
   // Sem telefone não há como confirmar por WhatsApp: a reserva já nasce confirmada (senão expiraria sem resposta).
   const autoConfirm = depositCents === 0 && (source === "DASHBOARD" || !tenant.requireWhatsappConfirmation || !phone);
+  // Sinal pelo Asaas: ele só emite a cobrança com CPF válido do pagador. Falha ANTES de gravar qualquer coisa.
+  const cpf = onlyCpfDigits(input.client.cpf);
+  if (depositCents > 0 && pixProviderName(tenant) === "asaas" && !isValidCpf(cpf)) throw new AppointmentError("Informe um CPF válido para pagar o sinal.", "CPF_REQUIRED");
   const initialStatus: AppointmentStatus = depositCents > 0 ? "AWAITING_PAYMENT" : autoConfirm ? "CONFIRMED" : "PENDING";
   const paymentDeadline = new Date(Date.now() + tenant.depositTimeoutMinutes * 60_000);
 
@@ -191,11 +196,11 @@ export async function createAppointment(input: CreateInput) {
       const client = phone
         ? await tx.client.upsert({
             where: { tenantId_phone: { tenantId: tenant.id, phone } },
-            create: { tenantId: tenant.id, name: nome, phone, email },
-            update: { name: nome, ...(email ? { email } : {}) },
+            create: { tenantId: tenant.id, name: nome, phone, email, cpf },
+            update: { name: nome, ...(email ? { email } : {}), ...(cpf ? { cpf } : {}) },
           })
         : (email ? await tx.client.findFirst({ where: { tenantId: tenant.id, email, phone: null } }) : null)
-            ?? await tx.client.create({ data: { tenantId: tenant.id, name: nome, phone: null, email } });
+            ?? await tx.client.create({ data: { tenantId: tenant.id, name: nome, phone: null, email, cpf } });
 
       // Duplicado: mesmo cliente, mesmo horário, ainda ativo.
       const duplicate = await tx.appointment.findFirst({

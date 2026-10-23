@@ -51,7 +51,7 @@ export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmat
   const needsUnit = units.length >= 2;
   const [items, setItems] = useState<VisitItem[]>([]);
   const [slot, setSlot] = useState<Slot | null>(null);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", notes: "" });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", cpf: "", notes: "" });
   const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -347,6 +347,13 @@ export function BookingWizard({ slug, todayKey, maxAdvanceDays, requireConfirmat
             <label className="label" htmlFor="email">E-mail <span className="font-normal text-zinc-400">(opcional)</span></label>
             <input id="email" type="email" autoComplete="email" className="input rounded-xl py-3" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </div>
+          {depositCents > 0 && (
+            <div>
+              <label className="label" htmlFor="cpf">CPF</label>
+              <input id="cpf" required inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" maxLength={14} className="input rounded-xl py-3" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />
+              <p className="mt-1 text-xs text-zinc-500">Necessário para gerar o Pix do sinal. Não aparece para ninguém além do estabelecimento.</p>
+            </div>
+          )}
           <div>
             <label className="label" htmlFor="notes">Observação <span className="font-normal text-zinc-400">(opcional)</span></label>
             <input id="notes" className="input rounded-xl py-3" maxLength={300} placeholder="Ex.: tenho o cabelo com química recente" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />

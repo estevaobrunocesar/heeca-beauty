@@ -70,8 +70,9 @@ model Tenant {
   depositMode           DepositMode @default(NONE)
   depositValue          Int         @default(0) // PERCENT: 0..100 · FIXED: centavos
   depositTimeoutMinutes Int         @default(30) // libera o horário se não pagar em X min
-  pixProvider           String? // "mercadopago" (null = usa PIX_PROVIDER do ambiente)
+  pixProvider           String? // "asaas" (null = usa PIX_PROVIDER do ambiente; sem nenhum, o Pix não está configurado)
   pixCredentialsEnc     String? // access token do provedor, criptografado (AES-256-GCM)
+  pixWebhookToken       String? // token que o estabelecimento cadastra no webhook do Asaas (header asaas-access-token)
 
   // Vínculo com o portal heeca.com.br (dono de conta, plano e cobrança — contrato em heeca_site/docs/ENTITLEMENT.md).
   // Só espelho: o Nail nunca cobra. null = tenant criado pelo cadastro local (sem assinatura no portal).
@@ -460,6 +461,7 @@ model Client {
   id       String  @id @default(cuid())
   tenantId String
   name     String
+  cpf      String? // só dígitos; pedido apenas quando há sinal via Pix (o Asaas exige CPF/CNPJ para emitir a cobrança)
   phone    String? // E.164, ex.: +5511999998888. Null só quando o estabelecimento dispensa o telefone (Tenant.requirePhone = false)
   email    String?
   notes    String? // observações administrativas (SPEC §12)
@@ -704,7 +706,7 @@ model Payment {
   id                String        @id @default(cuid())
   tenantId          String
   appointmentId     String        @unique
-  provider          String // "mock" | "mercadopago"
+  provider          String // "asaas" ("mock" só em desenvolvimento)
   providerPaymentId String?       @unique
   amountCents       Int
   status            PaymentStatus @default(PENDING)

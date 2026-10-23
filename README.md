@@ -11,7 +11,7 @@ Nasceu como um clone do **Heeca Nail** (18/09/2026): mesma stack, mesma integra�
 - Auth própria (JWT em cookie httpOnly, bcrypt) + SSO do portal heeca.com.br
 - WhatsApp via *provider* plugável: `console` (dev) ou **Meta WhatsApp Cloud API**
 - E-mail transacional: `console` (dev) ou **Resend**
-- Sinal via Pix: `mock` (dev) ou **Mercado Pago**
+- Sinal via Pix: **Asaas** (cada estabelecimento com a própria conta) ou `mock` (só dev)
 
 ## Rodando localmente
 

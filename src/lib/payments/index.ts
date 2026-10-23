@@ -3,30 +3,41 @@ import type { Tenant } from "@/generated/prisma/client";
 import { decryptSecret } from "@/lib/crypto";
 import type { PixProvider } from "./provider";
 import { MockPixProvider } from "./providers/mock";
-import { MercadoPagoProvider } from "./providers/mercadopago";
+import { AsaasPixProvider } from "./providers/asaas";
 
 type TenantPix = Pick<Tenant, "pixProvider" | "pixCredentialsEnc">;
 
-/** Nome do provedor efetivo para um estabelecimento (configuração dele ou padrão do ambiente). */
-export function pixProviderName(tenant: TenantPix): string {
-  return (tenant.pixProvider ?? process.env.PIX_PROVIDER ?? "mock").toLowerCase();
+/** O único provedor de pagamento da Heeca é o Asaas. O "mock" existe só para desenvolvimento (PIX_PROVIDER=mock no ambiente). */
+export type PixProviderName = "asaas" | "mock" | "none";
+
+const valido = (v: string | null | undefined): "asaas" | "mock" | null => {
+  const n = (v ?? "").toLowerCase();
+  return n === "asaas" || n === "mock" ? n : null;
+};
+
+/** Provedor efetivo do estabelecimento: o dele, senão o padrão do ambiente; qualquer outro valor = sem Pix configurado. */
+export function pixProviderName(tenant: TenantPix): PixProviderName {
+  return valido(tenant.pixProvider) ?? valido(process.env.PIX_PROVIDER) ?? "none";
 }
 
-/**
- * Provedor de Pix do estabelecimento. Credenciais vêm do tenant (criptografadas)
- * ou, como fallback de desenvolvimento/plataforma, de MERCADOPAGO_ACCESS_TOKEN.
- */
+export class PixNotConfiguredError extends Error {
+  constructor(message = "O Pix ainda não está configurado. Informe a chave de API do Asaas em Configurações → Pagamentos.") {
+    super(message);
+  }
+}
+
+/** Provedor de Pix do estabelecimento (a chave do Asaas é dele, criptografada no banco). Lança PixNotConfiguredError se faltar. */
 export function getPixProvider(tenant: TenantPix): PixProvider {
   const name = pixProviderName(tenant);
-  if (name === "mercadopago") {
-    const token = tenant.pixCredentialsEnc ? decryptSecret(tenant.pixCredentialsEnc) : process.env.MERCADOPAGO_ACCESS_TOKEN ?? "";
-    return new MercadoPagoProvider(token);
+  if (name === "mock") return new MockPixProvider();
+  if (name === "asaas") {
+    if (!tenant.pixCredentialsEnc) throw new PixNotConfiguredError("Informe a chave de API do Asaas em Configurações → Pagamentos.");
+    return new AsaasPixProvider(decryptSecret(tenant.pixCredentialsEnc));
   }
-  return new MockPixProvider();
+  throw new PixNotConfiguredError();
 }
 
-/** Instancia um provedor a partir de credenciais ainda não salvas (para testar antes de gravar). */
-export function pixProviderFor(name: string, accessToken: string): PixProvider {
-  if (name === "mercadopago") return new MercadoPagoProvider(accessToken);
-  return new MockPixProvider();
+/** Instancia um provedor a partir de uma chave ainda não salva (para testar antes de gravar). */
+export function pixProviderFor(name: "asaas" | "mock", apiKey: string): PixProvider {
+  return name === "asaas" ? new AsaasPixProvider(apiKey) : new MockPixProvider();
 }

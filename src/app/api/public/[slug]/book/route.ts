@@ -25,6 +25,7 @@ const bodySchema = z.object({
   name: z.string().trim().min(2, "Informe seu nome").max(80),
   phone: z.string().trim().optional().or(z.literal("")), // obrigatório conforme o estabelecimento (createAppointment)
   email: z.string().trim().email("E-mail inválido").optional().or(z.literal("")),
+  cpf: z.string().trim().max(20).optional().or(z.literal("")), // só é exigido quando há sinal via Pix (createAppointment)
   notes: z.string().trim().max(300).optional().or(z.literal("")),
 });
 
@@ -68,7 +69,7 @@ export async function POST(req: Request, { params }: RouteContext<"/api/public/[
       items,
       dateKey: d.dateKey,
       minutes: d.minutes,
-      client: { name: d.name, phone: d.phone || null, email: d.email || null },
+      client: { name: d.name, phone: d.phone || null, email: d.email || null, cpf: d.cpf || null },
       notes: d.notes || null,
       source: "PUBLIC",
       actor: "CLIENT",

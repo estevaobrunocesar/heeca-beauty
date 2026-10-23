@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
 import { decryptSecret, maskSecret } from "@/lib/crypto";
-import { getPixProvider, pixProviderName } from "@/lib/payments";
+import { getPixProvider } from "@/lib/payments";
 import { fmtDateTime } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import { PaymentSettingsForm } from "./payment-form";
@@ -12,7 +12,6 @@ const PAYMENT_LABEL: Record<string, string> = {
 
 export default async function PaymentSettingsPage() {
   const { tenant } = await requireAuth();
-  const providerName = pixProviderName(tenant);
   // Montar o provedor também pode falhar (token ausente ou que não abre com a chave atual): a tela mostra o aviso em vez de cair.
   const health = await (async () => {
     try { return await getPixProvider(tenant).healthCheck(); }
@@ -42,10 +41,12 @@ export default async function PaymentSettingsPage() {
           depositPercent: tenant.depositMode === "PERCENT" ? tenant.depositValue : 30,
           depositFixed: tenant.depositMode === "FIXED" ? (tenant.depositValue / 100).toFixed(2).replace(".", ",") : "20,00",
           depositTimeoutMinutes: tenant.depositTimeoutMinutes,
-          pixProvider: providerName === "mercadopago" ? "mercadopago" : "mock",
+          temChave: !!tenant.pixCredentialsEnc,
           tokenMasked,
           tokenIlegivel,
-          envTokenAvailable: !!process.env.MERCADOPAGO_ACCESS_TOKEN,
+          webhookUrl: `${(process.env.APP_URL ?? "").replace(/\/$/, "")}/api/webhooks/asaas`,
+          webhookToken: tenant.pixWebhookToken,
+          sandbox: process.env.ASAAS_ENV !== "production",
         }}
         health={health}
       />

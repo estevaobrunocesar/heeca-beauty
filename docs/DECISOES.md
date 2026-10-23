@@ -223,3 +223,17 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 **Descartado.** Perfis personalizados com nome (dá mais trabalho para pouca diferença sobre ajustar por pessoa), permissão por unidade e permissões somente de leitura (hoje é ver e operar o módulo).
 
 **Consequência.** Migração aditiva `20261026120000_user_permissions` (coluna `User.permissions`).
+
+## 2026-10-27 — Asaas é o único meio de pagamento; Mercado Pago removido
+
+**Decisão do Bruno.** O Asaas é o único meio de pagamento usado pela Heeca (a assinatura já passa por ele no portal). Aqui, o sinal via Pix da cliente, que só funcionava com Mercado Pago, passa a usar o Asaas, e **todo o código do Mercado Pago foi apagado** (provedor, webhook, variáveis `MERCADOPAGO_*`, textos e tela).
+
+**Como funciona.** Cada estabelecimento usa a **própria conta Asaas** (o sinal cai direto nela): em Configurações → Pagamentos o dono informa a chave de API, que é testada na hora e guardada criptografada (AES-256-GCM). Cada sinal é uma cobrança avulsa `billingType: PIX` (`externalReference` = id do agendamento); o QR e o "copia e cola" vêm de `GET /payments/{id}/pixQrCode`. O Asaas **exige CPF/CNPJ do pagador**: quando há sinal, a página pública pede o CPF (validado com dígitos verificadores; só dígitos em `Client.cpf`), e a reserva é recusada **antes de gravar** se faltar. O cliente Asaas é reaproveitado por `externalReference` = id da cliente, com `notificationDisabled` (quem avisa a cliente é o WhatsApp). Sinal expirado ou agendamento cancelado **cancela a cobrança no Asaas** (best-effort) para ninguém pagar depois; estorno via `POST /payments/{id}/refund`.
+
+**Confirmação.** Webhook `POST /api/webhooks/asaas`: o estabelecimento cadastra a URL e o **token** mostrados na tela de Pagamentos (header `asaas-access-token`, token por estabelecimento em `Tenant.pixWebhookToken`, com botão para gerar outro). O payload nunca é a fonte da verdade: só o id da cobrança, que é **reconsultado** na API. Token errado = 401; evento irrelevante ou cobrança de outro sistema = 200.
+
+**Ambiente.** `ASAAS_ENV=production` usa a API real; qualquer outro valor usa o sandbox (a tela avisa quando está em testes). O modo `mock` sobrevive **só para desenvolvimento** (`PIX_PROVIDER=mock`) e não aparece como opção. Sem chave salva e sem `PIX_PROVIDER` válido, o Pix está "não configurado": a tela de Pagamentos abre mostrando isso e o sistema recusa ligar o sinal.
+
+**Limite do que foi testado.** O fluxo HTTP foi validado contra um servidor Asaas **simulado** (cliente → cobrança → QR → status → estorno → cancelamento) e de ponta a ponta no banco; o contrato real do Asaas só um teste no sandbox com uma chave de verdade confirma.
+
+**Consequência.** Migração `20261027120000_asaas_only` (`Client.cpf`, `Tenant.pixWebhookToken`; quem tinha `pixProvider='mercadopago'` volta ao padrão e perde a credencial antiga). Em produção, definir `ASAAS_ENV=production` nos containers e retirar `MERCADOPAGO_*`/`PIX_PROVIDER=mercadopago` do `infra/coolify-setup.mjs`.

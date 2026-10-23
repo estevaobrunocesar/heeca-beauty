@@ -1,6 +1,5 @@
 /**
- * Abstração de cobrança Pix. Implementações: MockPixProvider (dev) e MercadoPagoProvider.
- * Outros (Asaas, Efí, Stripe...) basta implementar esta interface.
+ * Abstração de cobrança Pix. Implementações: AsaasPixProvider (o único meio de pagamento da Heeca) e MockPixProvider (só desenvolvimento).
  */
 
 export type CreateChargeInput = {
@@ -8,8 +7,7 @@ export type CreateChargeInput = {
   description: string;
   externalReference: string; // id do agendamento
   expiresAt: Date;
-  payer: { id: string; name: string; email?: string | null; phone: string };
-  notificationUrl?: string;
+  payer: { id: string; name: string; email?: string | null; phone: string; cpf?: string | null };
 };
 
 export type ChargeResult = {
@@ -26,6 +24,8 @@ export interface PixProvider {
   createCharge(input: CreateChargeInput): Promise<ChargeResult>;
   getStatus(providerPaymentId: string): Promise<ProviderChargeStatus>;
   refund(providerPaymentId: string, amountCents?: number): Promise<void>;
+  /** Cancela uma cobrança ainda não paga, para ninguém pagar um sinal já expirado. */
+  cancel?(providerPaymentId: string): Promise<void>;
   /** Verifica credenciais; usado em Configurações → Pagamentos. */
   healthCheck(): Promise<{ ok: true; account?: string } | { ok: false; error: string }>;
 }

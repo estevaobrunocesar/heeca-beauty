@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -7,6 +8,7 @@ import { requireAuth } from "@/lib/auth/session";
 import { encryptSecret } from "@/lib/crypto";
 import { parseMoneyToCents } from "@/lib/money";
 import { pixProviderFor } from "@/lib/payments";
+import { cleanApiKey } from "@/lib/payments/asaas-rules";
 import { fail, success, type ActionResult } from "@/lib/action-result";
 
 const schema = z.object({
@@ -14,11 +16,11 @@ const schema = z.object({
   depositPercent: z.coerce.number().int().min(1).max(100).optional(),
   depositFixed: z.string().optional().or(z.literal("")),
   depositTimeoutMinutes: z.coerce.number().int().min(5).max(1440),
-  pixProvider: z.enum(["mock", "mercadopago"]),
-  accessToken: z.string().trim().optional().or(z.literal("")),
-  clearToken: z.string().optional(),
+  apiKey: z.string().optional().or(z.literal("")),
+  clearKey: z.string().optional(),
 });
 
+/** Sinal via Pix pelo Asaas: cada estabelecimento usa a própria conta (chave de API criptografada no banco). Só o dono altera. */
 export async function updatePaymentSettingsAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const ctx = await requireAuth();
   if (!ctx.isOwner) return fail("Apenas o responsável pode alterar pagamentos.");
@@ -36,19 +38,19 @@ export async function updatePaymentSettingsAction(_prev: ActionResult, formData:
     depositValue = cents;
   }
 
-  // Credencial: só grava se veio um token novo; "clearToken" remove; senão mantém.
+  // Chave: só grava se veio uma nova (testada antes); "clearKey" remove; senão mantém a que já está.
   let pixCredentialsEnc: string | null | undefined = undefined;
-  if (d.clearToken === "on") pixCredentialsEnc = null;
-  else if (d.accessToken) {
-    const check = await pixProviderFor(d.pixProvider, d.accessToken).healthCheck();
-    if (!check.ok) return fail(`Credencial recusada: ${check.error}`);
-    pixCredentialsEnc = encryptSecret(d.accessToken);
+  if (d.clearKey === "on") pixCredentialsEnc = null;
+  else if (d.apiKey?.trim()) {
+    const key = cleanApiKey(d.apiKey);
+    if (!key) return fail("A chave de API do Asaas parece incompleta. Copie-a inteira no painel do Asaas (Integrações → Chave de API).");
+    const check = await pixProviderFor("asaas", key).healthCheck();
+    if (!check.ok) return fail(`Chave recusada: ${check.error}`);
+    pixCredentialsEnc = encryptSecret(key);
   }
 
-  if (d.depositMode !== "NONE" && d.pixProvider === "mercadopago") {
-    const hasToken = pixCredentialsEnc ?? ctx.tenant.pixCredentialsEnc ?? process.env.MERCADOPAGO_ACCESS_TOKEN;
-    if (!hasToken) return fail("Para cobrar sinal pelo Mercado Pago, informe o access token.");
-  }
+  const temChave = pixCredentialsEnc !== undefined ? pixCredentialsEnc !== null : !!ctx.tenant.pixCredentialsEnc;
+  if (d.depositMode !== "NONE" && !temChave) return fail("Para cobrar sinal, informe a chave de API do Asaas.");
 
   await db.tenant.update({
     where: { id: ctx.tenant.id },
@@ -56,10 +58,25 @@ export async function updatePaymentSettingsAction(_prev: ActionResult, formData:
       depositMode: d.depositMode,
       depositValue,
       depositTimeoutMinutes: d.depositTimeoutMinutes,
-      pixProvider: d.pixProvider,
-      ...(pixCredentialsEnc !== undefined ? { pixCredentialsEnc } : {}),
+      ...(pixCredentialsEnc !== undefined
+        ? pixCredentialsEnc === null
+          ? { pixProvider: null, pixCredentialsEnc: null }
+          : { pixProvider: "asaas", pixCredentialsEnc }
+        : {}),
+      // Token do webhook: gerado uma vez quando há chave; o estabelecimento o cola no painel do Asaas.
+      ...(temChave && !ctx.tenant.pixWebhookToken ? { pixWebhookToken: randomBytes(24).toString("base64url") } : {}),
     },
   });
   revalidatePath("/app/configuracoes/pagamentos");
   return success("Pagamentos salvos!");
+}
+
+/** Gera um novo token de webhook (se o anterior vazou). O estabelecimento precisa atualizar no painel do Asaas. */
+export async function regenerateWebhookTokenAction(): Promise<ActionResult> {
+  const ctx = await requireAuth();
+  if (!ctx.isOwner) return fail("Apenas o responsável pode alterar pagamentos.");
+  if (!ctx.tenant.pixCredentialsEnc) return fail("Informe a chave de API do Asaas antes.");
+  await db.tenant.update({ where: { id: ctx.tenant.id }, data: { pixWebhookToken: randomBytes(24).toString("base64url") } });
+  revalidatePath("/app/configuracoes/pagamentos");
+  return success("Novo token gerado. Atualize-o no webhook do Asaas.");
 }

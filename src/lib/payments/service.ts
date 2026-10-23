@@ -27,8 +27,7 @@ export async function createDepositCharge(appointmentId: string, amountCents: nu
     description: `Sinal · ${appt.serviceName} · ${appt.tenant.businessName}`,
     externalReference: appt.id,
     expiresAt,
-    payer: { name: appt.client.name, email: appt.client.email, phone: appt.client.phone ?? "", id: appt.client.id },
-    notificationUrl: provider.name === "mercadopago" ? `${appUrl()}/api/webhooks/mercadopago` : undefined,
+    payer: { name: appt.client.name, email: appt.client.email, phone: appt.client.phone ?? "", id: appt.client.id, cpf: appt.client.cpf },
   });
   return db.payment.create({
     data: {
@@ -88,7 +87,14 @@ export async function refundDeposit(appointmentId: string) {
   }
 }
 
-/** Cobrança não paga cujo agendamento foi cancelado/expirou. */
+/** Cobrança não paga cujo agendamento foi cancelado/expirou: encerra aqui e cancela no Asaas (best-effort) para ninguém pagar depois. */
 export async function expireDeposit(appointmentId: string, status: "EXPIRED" | "CANCELLED" = "EXPIRED") {
+  const pendente = await db.payment.findFirst({ where: { appointmentId, status: "PENDING" }, include: { tenant: true } });
   await db.payment.updateMany({ where: { appointmentId, status: "PENDING" }, data: { status } });
+  if (!pendente?.providerPaymentId || pendente.provider !== "asaas") return;
+  try {
+    await getPixProvider(pendente.tenant).cancel?.(pendente.providerPaymentId);
+  } catch (err) {
+    console.error("[pix] não foi possível cancelar a cobrança no Asaas", pendente.id, err instanceof Error ? err.message : err);
+  }
 }
