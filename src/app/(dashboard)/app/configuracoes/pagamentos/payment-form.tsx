@@ -12,6 +12,8 @@ type Initial = {
   depositTimeoutMinutes: number;
   pixProvider: "mock" | "mercadopago";
   tokenMasked: string | null;
+  /** Há um token salvo, mas ele não abre com a chave atual do servidor: precisa ser informado de novo. */
+  tokenIlegivel: boolean;
   envTokenAvailable: boolean;
 };
 type Health = { ok: true; account?: string } | { ok: false; error: string };
@@ -83,6 +85,7 @@ export function PaymentSettingsForm({ initial, health }: { initial: Initial; hea
           </span>
         </div>
         {!health.ok && <p className="mt-2 text-sm text-rose-700">{health.error}</p>}
+        {initial.tokenIlegivel && <p className="mt-2 text-sm text-rose-700">O token salvo não pôde ser lido (a chave de segurança do servidor mudou desde que ele foi salvo). Informe o access token do Mercado Pago de novo abaixo e salve.</p>}
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>

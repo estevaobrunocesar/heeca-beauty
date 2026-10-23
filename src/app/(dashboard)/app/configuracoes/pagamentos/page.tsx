@@ -13,7 +13,16 @@ const PAYMENT_LABEL: Record<string, string> = {
 export default async function PaymentSettingsPage() {
   const { tenant } = await requireAuth();
   const providerName = pixProviderName(tenant);
-  const health = await getPixProvider(tenant).healthCheck().catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+  // Montar o provedor também pode falhar (token ausente ou que não abre com a chave atual): a tela mostra o aviso em vez de cair.
+  const health = await (async () => {
+    try { return await getPixProvider(tenant).healthCheck(); }
+    catch (e: unknown) { return { ok: false as const, error: e instanceof Error ? e.message : String(e) }; }
+  })();
+  let tokenMasked: string | null = null;
+  let tokenIlegivel = false;
+  if (tenant.pixCredentialsEnc) {
+    try { tokenMasked = maskSecret(decryptSecret(tenant.pixCredentialsEnc)); } catch { tokenIlegivel = true; }
+  }
   const recent = await db.payment.findMany({
     where: { tenantId: tenant.id },
     orderBy: { createdAt: "desc" },
@@ -34,7 +43,8 @@ export default async function PaymentSettingsPage() {
           depositFixed: tenant.depositMode === "FIXED" ? (tenant.depositValue / 100).toFixed(2).replace(".", ",") : "20,00",
           depositTimeoutMinutes: tenant.depositTimeoutMinutes,
           pixProvider: providerName === "mercadopago" ? "mercadopago" : "mock",
-          tokenMasked: tenant.pixCredentialsEnc ? maskSecret(decryptSecret(tenant.pixCredentialsEnc)) : null,
+          tokenMasked,
+          tokenIlegivel,
           envTokenAvailable: !!process.env.MERCADOPAGO_ACCESS_TOKEN,
         }}
         health={health}
