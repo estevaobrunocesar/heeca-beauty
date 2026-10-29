@@ -10,7 +10,7 @@ import { FichaCampos } from "@/components/ficha-campos";
 
 type Values = {
   name: string; phone: string; email: string; notes: string;
-  ficha: Record<string, string>; allergies: string; maintenanceIntervalDays: number | null; preferredProfessionalId: string;
+  ficha: Record<string, string>; allergies: string; maintenanceIntervalDays: number | null; preferredProfessionalIds: string[];
 };
 
 /** Ficha da cliente: contato + ficha técnica dos segmentos ativos (lib/marca.ts) que a profissional consulta antes do atendimento. */
@@ -24,13 +24,18 @@ export function ClientForm({ id, initial, campos, grupos, requirePhone, professi
       <div><label className="label" htmlFor="phone">WhatsApp{requirePhone ? "" : " (opcional)"}</label><input id="phone" name="phone" required={requirePhone} className="input" defaultValue={initial.phone} /></div>
       <div><label className="label" htmlFor="email">E-mail</label><input id="email" name="email" type="email" className="input" defaultValue={initial.email} /></div>
 
-      <div>
-        <label className="label" htmlFor="preferredProfessionalId">Profissional de preferência</label>
-        <select id="preferredProfessionalId" name="preferredProfessionalId" className="input" defaultValue={initial.preferredProfessionalId}>
-          <option value="">Sem preferência</option>
-          {professionals.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-      </div>
+      <fieldset>
+        <legend className="label">Profissionais de preferência</legend>
+        <div className="flex flex-wrap gap-2">
+          {professionals.map((p) => (
+            <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-full border border-zinc-200 px-3 py-1 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+              <input type="checkbox" name="preferredProfessionalIds" value={p.id} defaultChecked={initial.preferredProfessionalIds.includes(p.id)} className="h-4 w-4 rounded border-zinc-300" />
+              {p.name}
+            </label>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-zinc-500">Marque uma ou mais. Sem nenhuma marcada, a cliente não tem preferência.</p>
+      </fieldset>
 
       <fieldset className="space-y-3 rounded-lg border border-brand-100 bg-brand-50/40 p-3">
         <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-700">Ficha técnica</legend>

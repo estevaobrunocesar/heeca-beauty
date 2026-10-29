@@ -194,7 +194,7 @@ model Professional {
   exceptions         ScheduleException[]
   blocks             ScheduleBlock[]
   services           ProfessionalService[]
-  preferredByClients Client[]              @relation("ClientPreferredProfessional")
+  preferredByClients ClientProfessional[]
   assessments        Assessment[]
   plans              ClientPackage[]
 
@@ -466,8 +466,7 @@ model Client {
   email    String?
   notes    String? // observações administrativas (SPEC §12)
 
-  birthDate               DateTime? @db.Date // aniversário → campanha (SPEC §13)
-  preferredProfessionalId String?
+  birthDate DateTime? @db.Date // aniversário → campanha (SPEC §13)
 
   // Ficha técnica configurável por segmento (lib/marca.ts → fichaDe): { ["unhas.formato"]: valor, … }.
   // Atualizada automaticamente quando a profissional registra um atendimento (Appointment.registro).
@@ -478,17 +477,29 @@ model Client {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant                Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  preferredProfessional Professional?     @relation("ClientPreferredProfessional", fields: [preferredProfessionalId], references: [id], onDelete: SetNull)
-  appointments          Appointment[]
-  cashbackEntries       CashbackEntry[]
-  campaignSends         CampaignSend[]
-  packages              ClientPackage[]
-  assessments           Assessment[]
-  messages              WhatsappMessage[]
+  tenant                 Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  preferredProfessionals ClientProfessional[]
+  appointments           Appointment[]
+  cashbackEntries        CashbackEntry[]
+  campaignSends          CampaignSend[]
+  packages               ClientPackage[]
+  assessments            Assessment[]
+  messages               WhatsappMessage[]
 
   @@unique([tenantId, phone])
   @@index([tenantId, name])
+}
+
+// Profissionais de preferência da cliente (N:N): zero, uma ou várias. Sem preferência = nenhuma linha.
+model ClientProfessional {
+  clientId       String
+  professionalId String
+
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@id([clientId, professionalId])
+  @@index([professionalId])
 }
 
 // ───────────────────────── Agendamentos ─────────────────────────

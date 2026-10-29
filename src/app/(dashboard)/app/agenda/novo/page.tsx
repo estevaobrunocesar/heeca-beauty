@@ -14,12 +14,13 @@ export default async function NewAppointmentPage({ searchParams }: PageProps<"/a
       orderBy: { sortOrder: "asc" },
       include: { professionals: { select: { professionalId: true } } },
     }),
-    db.client.findMany({ where: { tenantId: tenant.id }, orderBy: { name: "asc" }, select: { id: true, name: true, phone: true, preferredProfessionalId: true } }),
+    db.client.findMany({ where: { tenantId: tenant.id }, orderBy: { name: "asc" }, select: { id: true, name: true, phone: true } }),
   ]);
   const preselected = typeof sp.cliente === "string" ? clients.find((c) => c.id === sp.cliente || c.phone === sp.cliente) ?? null : null;
   const team = activeProfessionals(ctx);
   // ?pro= explícito > profissional de preferência da cliente (se ainda atende) > a própria usuária
-  const preferred = team.find((p) => p.id === preselected?.preferredProfessionalId)?.id;
+  const preferidas = new Set(preselected ? (await db.clientProfessional.findMany({ where: { clientId: preselected.id }, select: { professionalId: true } })).map((r) => r.professionalId) : []);
+  const preferred = team.find((p) => preferidas.has(p.id))?.id;
   const defaultPro = (typeof sp.pro === "string" && team.find((p) => p.id === sp.pro)?.id) || preferred || ctx.professional.id;
 
   return (

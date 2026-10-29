@@ -24,7 +24,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
     },
     orderBy: { name: "asc" },
     include: {
-      preferredProfessional: { select: { name: true } },
+      preferredProfessionals: { select: { professional: { select: { name: true } } } },
       _count: { select: { appointments: true } },
       appointments: { where: { status: "COMPLETED" }, orderBy: { startsAt: "desc" }, take: 1, select: { startsAt: true, serviceName: true } },
     },
@@ -60,7 +60,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
                 <tr key={c.id} className="hover:bg-zinc-50">
                   <td className="px-4 py-2 font-medium"><Link href={`/app/clientes/${c.id}`} className="hover:underline">{c.name}</Link></td>
                   <td className="px-4 py-2">{c.phone ? <a href={whatsappLink(c.phone)} target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline">{formatPhone(c.phone)}</a> : <span className="text-zinc-400">Sem telefone</span>}</td>
-                  <td className="px-4 py-2">{c.preferredProfessional?.name ?? <span className="text-zinc-400">—</span>}</td>
+                  <td className="px-4 py-2">{c.preferredProfessionals.length ? c.preferredProfessionals.map((r) => r.professional.name).sort((a, b) => a.localeCompare(b, "pt-BR")).join(", ") : <span className="text-zinc-400">—</span>}</td>
                   <td className="px-4 py-2 text-xs text-zinc-500">
                     {resumoFicha(ficha, lerFicha(c.ficha, ficha)) || "—"}
                     {c.allergies && <span className="ml-1 text-rose-600" title={c.allergies}>⚠️</span>}

@@ -17,7 +17,6 @@ const schema = z.object({
   // Ficha técnica: os campos `ficha.<codigo>` são lidos à parte (fichaDoForm, por segmento)
   allergies: z.string().trim().max(300).optional().or(z.literal("")),
   maintenanceIntervalDays: z.coerce.number().int().min(0).max(365).optional(),
-  preferredProfessionalId: z.string().trim().optional().or(z.literal("")), // vazio = sem preferência
 });
 
 export async function updateClientAction(id: string, _prev: ActionResult, formData: FormData): Promise<ActionResult> {
@@ -34,23 +33,30 @@ export async function updateClientAction(id: string, _prev: ActionResult, formDa
     if (clash) return fail("Já existe outra cliente com este WhatsApp.");
   }
 
-  let preferredProfessionalId: string | null = null;
-  if (d.preferredProfessionalId) {
-    const pro = await db.professional.findFirst({ where: { id: d.preferredProfessionalId, tenantId: tenant.id, active: true }, select: { id: true } });
-    if (!pro) return fail("Profissional inválida");
-    preferredProfessionalId = pro.id;
-  }
+  // Profissionais de preferência: zero ou mais, só deste estabelecimento. Já preferidas que foram desativadas continuam válidas.
+  const pedidas = [...new Set(formData.getAll("preferredProfessionalIds").map(String).filter(Boolean))];
+  const validas = pedidas.length
+    ? await db.professional.findMany({ where: { id: { in: pedidas }, tenantId: tenant.id }, select: { id: true, active: true } })
+    : [];
+  if (validas.length !== pedidas.length) return fail("Profissional inválida");
+  const atuais = new Set((await db.clientProfessional.findMany({ where: { clientId: id }, select: { professionalId: true } })).map((r) => r.professionalId));
+  if (validas.some((p) => !p.active && !atuais.has(p.id))) return fail("Profissional inválida");
 
+  const dono = await db.client.findFirst({ where: { id, tenantId: tenant.id }, select: { id: true } });
+  if (!dono) return fail("Cliente não encontrada");
   const res = await db.client.updateMany({
     where: { id, tenantId: tenant.id },
     data: {
       name: d.name, phone, email: d.email || null, notes: d.notes || null,
       ficha: fichaDoForm(formData, perfilDoTenant(tenant).ficha), allergies: d.allergies || null,
       maintenanceIntervalDays: d.maintenanceIntervalDays || null,
-      preferredProfessionalId,
     },
   });
   if (res.count === 0) return fail("Cliente não encontrada");
+  await db.$transaction([
+    db.clientProfessional.deleteMany({ where: { clientId: id } }),
+    db.clientProfessional.createMany({ data: validas.map((p) => ({ clientId: id, professionalId: p.id })) }),
+  ]);
   revalidatePath(`/app/clientes/${id}`);
   revalidatePath("/app/clientes");
   return success("Ficha atualizada");

@@ -27,12 +27,13 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
       appointments: { orderBy: { startsAt: "desc" }, take: 50, include: { items: { orderBy: { sortOrder: "asc" }, select: { serviceName: true } }, charges: { select: { amountCents: true } } } },
       packages: { orderBy: { createdAt: "desc" }, include: { sessions: { select: { status: true } } } },
       cashbackEntries: { orderBy: { createdAt: "desc" } },
+      preferredProfessionals: { select: { professionalId: true } },
     },
   });
   if (!client) notFound();
   // Ativas, mais a preferida atual mesmo que tenha sido desativada (para o select não perdê-la em silêncio)
   const professionals = await db.professional.findMany({
-    where: { tenantId: tenant.id, OR: [{ active: true }, { id: client.preferredProfessionalId ?? "" }] },
+    where: { tenantId: tenant.id, OR: [{ active: true }, { id: { in: client.preferredProfessionals.map((r) => r.professionalId) } }] },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     select: { id: true, name: true },
   });
@@ -67,7 +68,7 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
             initial={{
               name: client.name, phone: client.phone ? formatPhone(client.phone) : "", email: client.email ?? "", notes: client.notes ?? "",
               ficha: lerFicha(client.ficha, campos), allergies: client.allergies ?? "",
-              maintenanceIntervalDays: client.maintenanceIntervalDays, preferredProfessionalId: client.preferredProfessionalId ?? "",
+              maintenanceIntervalDays: client.maintenanceIntervalDays, preferredProfessionalIds: client.preferredProfessionals.map((r) => r.professionalId),
             }}
             professionals={professionals}
             campos={campos}
