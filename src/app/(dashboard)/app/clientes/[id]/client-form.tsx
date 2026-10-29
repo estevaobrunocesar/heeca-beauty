@@ -10,11 +10,11 @@ import { FichaCampos } from "@/components/ficha-campos";
 
 type Values = {
   name: string; phone: string; email: string; notes: string;
-  ficha: Record<string, string>; allergies: string; maintenanceIntervalDays: number | null;
+  ficha: Record<string, string>; allergies: string; maintenanceIntervalDays: number | null; preferredProfessionalId: string;
 };
 
 /** Ficha da cliente: contato + ficha técnica dos segmentos ativos (lib/marca.ts) que a profissional consulta antes do atendimento. */
-export function ClientForm({ id, initial, campos, grupos, requirePhone }: { id: string; initial: Values; campos: CampoFicha[]; grupos: Record<string, string>; requirePhone: boolean }) {
+export function ClientForm({ id, initial, campos, grupos, requirePhone, professionals }: { id: string; initial: Values; campos: CampoFicha[]; grupos: Record<string, string>; requirePhone: boolean; professionals: { id: string; name: string }[] }) {
   const [state, action] = useActionState<ActionResult, FormData>(updateClientAction.bind(null, id), null);
   return (
     <form action={action} className="card space-y-3 p-5">
@@ -23,6 +23,14 @@ export function ClientForm({ id, initial, campos, grupos, requirePhone }: { id: 
       <div><label className="label" htmlFor="name">Nome</label><input id="name" name="name" required className="input" defaultValue={initial.name} /></div>
       <div><label className="label" htmlFor="phone">WhatsApp{requirePhone ? "" : " (opcional)"}</label><input id="phone" name="phone" required={requirePhone} className="input" defaultValue={initial.phone} /></div>
       <div><label className="label" htmlFor="email">E-mail</label><input id="email" name="email" type="email" className="input" defaultValue={initial.email} /></div>
+
+      <div>
+        <label className="label" htmlFor="preferredProfessionalId">Profissional de preferência</label>
+        <select id="preferredProfessionalId" name="preferredProfessionalId" className="input" defaultValue={initial.preferredProfessionalId}>
+          <option value="">Sem preferência</option>
+          {professionals.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </div>
 
       <fieldset className="space-y-3 rounded-lg border border-brand-100 bg-brand-50/40 p-3">
         <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-brand-700">Ficha técnica</legend>

@@ -30,6 +30,12 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
     },
   });
   if (!client) notFound();
+  // Ativas, mais a preferida atual mesmo que tenha sido desativada (para o select não perdê-la em silêncio)
+  const professionals = await db.professional.findMany({
+    where: { tenantId: tenant.id, OR: [{ active: true }, { id: client.preferredProfessionalId ?? "" }] },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: { id: true, name: true },
+  });
   const regra = regraFaltaDe(tenant);
   const pacotes = client.packages.map((pk) => ({ ...pk, p: progresso(pk, pk.sessions, regra) })).filter((x) => x.status === "ACTIVE" || x.p.agendadas > 0).slice(0, 5);
 
@@ -61,8 +67,9 @@ export default async function ClientDetailPage({ params }: PageProps<"/app/clien
             initial={{
               name: client.name, phone: client.phone ? formatPhone(client.phone) : "", email: client.email ?? "", notes: client.notes ?? "",
               ficha: lerFicha(client.ficha, campos), allergies: client.allergies ?? "",
-              maintenanceIntervalDays: client.maintenanceIntervalDays,
+              maintenanceIntervalDays: client.maintenanceIntervalDays, preferredProfessionalId: client.preferredProfessionalId ?? "",
             }}
+            professionals={professionals}
             campos={campos}
             grupos={grupos}
             requirePhone={tenant.requirePhone}

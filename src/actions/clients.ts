@@ -17,6 +17,7 @@ const schema = z.object({
   // Ficha técnica: os campos `ficha.<codigo>` são lidos à parte (fichaDoForm, por segmento)
   allergies: z.string().trim().max(300).optional().or(z.literal("")),
   maintenanceIntervalDays: z.coerce.number().int().min(0).max(365).optional(),
+  preferredProfessionalId: z.string().trim().optional().or(z.literal("")), // vazio = sem preferência
 });
 
 export async function updateClientAction(id: string, _prev: ActionResult, formData: FormData): Promise<ActionResult> {
@@ -33,12 +34,20 @@ export async function updateClientAction(id: string, _prev: ActionResult, formDa
     if (clash) return fail("Já existe outra cliente com este WhatsApp.");
   }
 
+  let preferredProfessionalId: string | null = null;
+  if (d.preferredProfessionalId) {
+    const pro = await db.professional.findFirst({ where: { id: d.preferredProfessionalId, tenantId: tenant.id, active: true }, select: { id: true } });
+    if (!pro) return fail("Profissional inválida");
+    preferredProfessionalId = pro.id;
+  }
+
   const res = await db.client.updateMany({
     where: { id, tenantId: tenant.id },
     data: {
       name: d.name, phone, email: d.email || null, notes: d.notes || null,
       ficha: fichaDoForm(formData, perfilDoTenant(tenant).ficha), allergies: d.allergies || null,
       maintenanceIntervalDays: d.maintenanceIntervalDays || null,
+      preferredProfessionalId,
     },
   });
   if (res.count === 0) return fail("Cliente não encontrada");

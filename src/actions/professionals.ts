@@ -216,3 +216,35 @@ export async function removeProfessionalAccessAction(id: string): Promise<Action
   revalidateTeam(id);
   return success("Acesso removido.");
 }
+
+/**
+ * Exclui o profissional da equipe. Só é possível enquanto ele não tem histórico: atendimento e avaliação
+ * guardam o profissional (comissão, ficha), então quem já atendeu só pode ser desativado, para não
+ * reescrever o passado. Horários, serviços e bloqueios saem junto; clientes que o preferiam ficam sem preferência.
+ */
+export async function deleteProfessionalAction(id: string): Promise<ActionResult> {
+  const ctx = await requireAuth();
+  if (!ctx.can("equipe")) return fail("Sem permissão para gerenciar a equipe.");
+  const pro = requireProfessionalAccess(ctx, id);
+  if (pro.userId === ctx.user.id) return fail("Você não pode excluir o seu próprio perfil.");
+  const user = pro.userId ? await db.user.findUnique({ where: { id: pro.userId }, select: { id: true, role: true } }) : null;
+  if (user?.role === "OWNER") return fail("O perfil do responsável não pode ser excluído.");
+
+  const outras = await db.professional.count({ where: { tenantId: ctx.tenant.id, active: true, NOT: { id } } });
+  if (outras === 0) return fail("Mantenha ao menos um profissional ativo na equipe.");
+
+  const [atendimentos, avaliacoes] = await Promise.all([
+    db.appointmentItem.count({ where: { professionalId: id } }),
+    db.assessment.count({ where: { professionalId: id } }),
+  ]);
+  if (atendimentos + avaliacoes > 0) {
+    return fail("Este profissional tem atendimentos no histórico e não pode ser excluído. Desative-o no perfil (opção “Ativo”) para tirá-lo da agenda e da página de agendamento, mantendo o histórico e as comissões.");
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.professional.delete({ where: { id } });
+    if (user) await tx.user.delete({ where: { id: user.id } }); // o login só existia para este perfil
+  });
+  revalidateTeam();
+  return success("Profissional excluído.");
+}

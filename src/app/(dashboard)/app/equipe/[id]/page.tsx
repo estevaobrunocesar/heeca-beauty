@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { WeeklyHoursForm, type DayValue } from "@/components/dashboard/weekly-hours-form";
 import { ProfileForm } from "./profile-form";
 import { AccessForm } from "./access-form";
+import { DeleteProfessionalButton } from "./delete-professional";
 import { lerOverrides, permissoesEfetivas } from "@/lib/permissions/rules";
 
 export default async function ProfessionalPage({ params }: PageProps<"/app/equipe/[id]">) {
@@ -68,6 +69,7 @@ export default async function ProfessionalPage({ params }: PageProps<"/app/equip
             <h2 className="font-medium text-zinc-900">Folgas, bloqueios e férias</h2>
             <p className="mt-1">São registrados pela <Link href={`/app/agenda?pro=${pro.id}`} className="underline">agenda</Link>, com o profissional selecionado.</p>
           </section>
+          {ctx.can("equipe") && pro.userId !== ctx.user.id && user?.role !== "OWNER" && <DeleteProfessionalButton id={pro.id} name={pro.name} />}
         </aside>
       </div>
 
