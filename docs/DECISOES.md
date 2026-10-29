@@ -237,3 +237,15 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 **Limite do que foi testado.** O fluxo HTTP foi validado contra um servidor Asaas **simulado** (cliente → cobrança → QR → status → estorno → cancelamento) e de ponta a ponta no banco; o contrato real do Asaas só um teste no sandbox com uma chave de verdade confirma.
 
 **Consequência.** Migração `20261027120000_asaas_only` (`Client.cpf`, `Tenant.pixWebhookToken`; quem tinha `pixProvider='mercadopago'` volta ao padrão e perde a credencial antiga). Em produção, definir `ASAAS_ENV=production` nos containers e retirar `MERCADOPAGO_*`/`PIX_PROVIDER=mercadopago` do `infra/coolify-setup.mjs`.
+
+## 2026-10-28 — Endereço próprio do estabelecimento: <identificador>.beauty.heeca.com.br
+
+**Contexto.** O portal exibe o "Endereço" de cada estabelecimento como `{identificador}.{produto}.heeca.com.br` (ex.: `studio21.beauty.heeca.com.br`), mas o Beauty só servia a página pelo caminho `/agendar/<identificador>`: o endereço exibido não existia. Além disso, o identificador do Studio21 saiu `studio21-2`, porque `uniqueTenantSlug` acrescenta `-2` quando o nome já existe no banco.
+
+**Regra.** `estabelecimentoDoHost(host)` (`lib/marca.ts`): um host com **4 rótulos** cujo segundo é uma marca (ou host absorvido) é o endereço de um estabelecimento; o primeiro rótulo é o identificador. No `proxy.ts`, a **raiz** (`/`) desse host é reescrita para `/agendar/<identificador>`; qualquer outro caminho (`/agendar/...`, `/pagar/...`, `/confirmar/...`, `/app`, `/api`) segue igual. A marca do host passa a vir do segundo rótulo, e esse host nunca é tratado como host legado a redirecionar. Estabelecimento inexistente = 404.
+
+**Identificadores reservados** (`SLUGS_RESERVADOS`): `www`, `api`, `app`, `admin`, `portal`, nomes das marcas e dos hosts absorvidos etc. nunca viram identificador de estabelecimento (`uniqueTenantSlug` os trata como ocupados), para o endereço próprio não colidir com os do sistema.
+
+**Fora do código (infra e dados em produção).** (1) DNS curinga `*.beauty.heeca.com.br` (e `*.wellness...`) com certificado curinga e o domínio curinga no container da marca. (2) Renomear o identificador do Studio21 de `studio21-2` para `studio21` no Beauty e em `Subscription.externalTenantSlug` do portal, quando o identificador `studio21` estiver livre. Links antigos `/agendar/studio21-2` deixam de abrir depois da troca.
+
+**Consequência.** Só código, sem migração.

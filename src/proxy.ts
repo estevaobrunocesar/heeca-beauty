@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { redirecionamentoDeHost } from "@/lib/marca";
+import { estabelecimentoDoHost, redirecionamentoDeHost } from "@/lib/marca";
 
 /**
  * Hosts de produtos absorvidos (nail/lash/brow/cut/skin → beauty; massage → wellness, lib/marca.ts):
@@ -8,9 +8,20 @@ import { redirecionamentoDeHost } from "@/lib/marca";
  * Sem APP_URL_TEMPLATE (dev) não há hosts por marca e nada acontece.
  */
 export function proxy(req: NextRequest) {
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+
+  // Endereço próprio do estabelecimento (studio21.beauty.heeca.com.br): a raiz mostra a página de agendamento dele.
+  // O resto do caminho (/agendar/..., /pagar/..., /confirmar/..., /app, /api) segue igual em qualquer host.
+  const est = estabelecimentoDoHost(host);
+  if (est) {
+    if (req.nextUrl.pathname !== "/") return NextResponse.next();
+    const destino = req.nextUrl.clone();
+    destino.pathname = `/agendar/${est.slug}`;
+    return NextResponse.rewrite(destino);
+  }
+
   const template = process.env.APP_URL_TEMPLATE;
   if (!template) return NextResponse.next();
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
   const marca = redirecionamentoDeHost(host);
   if (!marca) return NextResponse.next();
   const destino = new URL(req.nextUrl.pathname + req.nextUrl.search, template.replace("{marca}", marca.slug));

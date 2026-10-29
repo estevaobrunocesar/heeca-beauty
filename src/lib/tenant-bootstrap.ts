@@ -3,7 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { slugify } from "@/lib/slug";
 import { defaultCategories } from "@/lib/services/categories";
-import { MARCA_PADRAO, marcaPorSlug, segmentosDe } from "@/lib/marca";
+import { MARCA_PADRAO, SLUGS_RESERVADOS, marcaPorSlug, segmentosDe } from "@/lib/marca";
 
 /**
  * Bootstrap de um estabelecimento novo — usado pelo cadastro local (actions/auth) e pelo
@@ -27,7 +27,8 @@ export type BootstrapInput = {
 
 export async function uniqueTenantSlug(base: string) {
   let slug = slugify(base);
-  for (let i = 2; await db.tenant.findUnique({ where: { slug } }); i++) slug = `${slugify(base)}-${i}`;
+  // Nome reservado (www, api, nomes de marca…) já começa como "ocupado": o endereço próprio dele não pode colidir com os do sistema.
+  for (let i = 2; SLUGS_RESERVADOS.has(slug) || (await db.tenant.findUnique({ where: { slug } })); i++) slug = `${slugify(base)}-${i}`;
   return slug;
 }
 

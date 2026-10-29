@@ -265,14 +265,36 @@ export function marcaPorSlug(slug: string | null | undefined): Marca {
 
 /** Marca pelo host: "beauty.heeca.com.br" → beauty; host legado → marca que o absorveu; localhost/IP/desconhecido → MARCA_DEFAULT ou beauty. */
 export function marcaDoHost(host: string | null | undefined): Marca {
+  const est = estabelecimentoDoHost(host);
+  if (est) return est.marca;
   const sub = subdominio(host);
   return MARCAS[sub] ?? MARCAS[HOSTS_LEGADOS[sub] ?? ""] ?? marcaPorSlug(process.env.MARCA_DEFAULT);
 }
 
 /** Marca a que um host legado deveria redirecionar, ou null se o host já é canônico (ou desconhecido). */
 export function redirecionamentoDeHost(host: string | null | undefined): Marca | null {
+  if (estabelecimentoDoHost(host)) return null; // "nail.beauty.heeca.com.br" é um estabelecimento chamado "nail", não o host legado
   const alvo = HOSTS_LEGADOS[subdominio(host)];
   return alvo ? MARCAS[alvo] : null;
+}
+
+/** Identificadores que nunca viram endereço de estabelecimento: nomes técnicos e os das marcas e dos hosts absorvidos. */
+export const SLUGS_RESERVADOS: ReadonlySet<string> = new Set([
+  "www", "api", "app", "admin", "portal", "mail", "static", "assets", "cdn", "painel", "login", "sso",
+  ...Object.keys(MARCAS), ...Object.keys(HOSTS_LEGADOS),
+]);
+
+/**
+ * Endereço próprio do estabelecimento: "studio21.beauty.heeca.com.br" → { marca: beauty, slug: "studio21" }.
+ * Hosts da marca ("beauty.heeca.com.br"), hosts absorvidos e nomes reservados não contam (devolve null).
+ */
+export function estabelecimentoDoHost(host: string | null | undefined): { marca: Marca; slug: string } | null {
+  const labels = (host ?? "").toLowerCase().split(":")[0].split(".");
+  if (labels.length < 4) return null;
+  const [slug, produto] = labels;
+  const marca = MARCAS[produto] ?? MARCAS[HOSTS_LEGADOS[produto] ?? ""];
+  if (!marca || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) || SLUGS_RESERVADOS.has(slug)) return null;
+  return { marca, slug };
 }
 
 const subdominio = (host: string | null | undefined) => (host ?? "").toLowerCase().split(":")[0].split(".")[0];

@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
-  CATEGORIAS_CONHECIDAS, HOSTS_LEGADOS, MARCAS, categoriasSugeridas, escolheuSegmentos, fichaDe, marcaDoHost, paleta, redirecionamentoDeHost, segmentosDe,
+  CATEGORIAS_CONHECIDAS, HOSTS_LEGADOS, MARCAS, SLUGS_RESERVADOS, categoriasSugeridas, escolheuSegmentos, estabelecimentoDoHost, fichaDe, marcaDoHost, paleta, redirecionamentoDeHost, segmentosDe,
 } from "../src/lib/marca";
 
 describe("marcas e hosts", () => {
@@ -84,5 +84,34 @@ describe("wellness — campos compartilhados", () => {
   });
   it("massagem + spa: categorias de massagem vêm do Massage, spa acrescenta experiências e corporais", () => {
     assert.deepEqual(categoriasSugeridas(segmentosDe(w, { segmentos: ["massagem", "spa"] })).map((c) => c.slug), ["relaxante", "terapeutica", "drenagem", "experiencias", "corporais"]);
+  });
+});
+
+describe("endereço próprio do estabelecimento (<slug>.<marca>.heeca.com.br)", () => {
+  it("studio21.beauty.heeca.com.br → estabelecimento studio21 da marca beauty", () => {
+    const e = estabelecimentoDoHost("studio21.beauty.heeca.com.br");
+    assert.equal(e?.slug, "studio21");
+    assert.equal(e?.marca.slug, "beauty");
+    assert.equal(estabelecimentoDoHost("Studio21.Wellness.heeca.com.br:443")?.marca.slug, "wellness");
+    assert.equal(estabelecimentoDoHost("bela-vista.beauty.heeca.com.br")?.slug, "bela-vista");
+  });
+  it("hosts da marca, absorvidos, locais e nomes reservados não são estabelecimento", () => {
+    assert.equal(estabelecimentoDoHost("beauty.heeca.com.br"), null);
+    assert.equal(estabelecimentoDoHost("nail.heeca.com.br"), null);
+    assert.equal(estabelecimentoDoHost("localhost:3000"), null);
+    assert.equal(estabelecimentoDoHost("www.beauty.heeca.com.br"), null);
+    assert.equal(estabelecimentoDoHost("studio21.desconhecida.heeca.com.br"), null);
+    assert.equal(estabelecimentoDoHost("est_udio.beauty.heeca.com.br"), null);
+    assert.equal(estabelecimentoDoHost(null), null);
+  });
+  it("a marca vem do segundo rótulo; estabelecimento nunca é redirecionado como host legado", () => {
+    assert.equal(marcaDoHost("studio21.wellness.heeca.com.br").slug, "wellness");
+    assert.equal(marcaDoHost("studio21.beauty.heeca.com.br").slug, "beauty");
+    assert.equal(redirecionamentoDeHost("studio21.beauty.heeca.com.br"), null);
+    assert.equal(redirecionamentoDeHost("nail.heeca.com.br")?.slug, "beauty", "host absorvido continua redirecionando");
+  });
+  it("marcas e hosts absorvidos são identificadores reservados", () => {
+    for (const r of ["beauty", "wellness", "nail", "massage", "www", "api", "admin"]) assert.equal(SLUGS_RESERVADOS.has(r), true, r);
+    assert.equal(SLUGS_RESERVADOS.has("studio21"), false);
   });
 });
