@@ -87,6 +87,7 @@ model Tenant {
   updatedAt DateTime @updatedAt
 
   users              User[]
+  deviceTokens       DeviceToken[]
   professionals      Professional[]
   categories         ServiceCategory[]
   services           Service[]
@@ -150,8 +151,26 @@ model User {
   tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   professional Professional?
   resetTokens  PasswordResetToken[]
+  deviceTokens DeviceToken[]
 
   @@index([tenantId])
+}
+
+// Celulares com o app Heeca instalado (Android/iOS) que recebem aviso de novo agendamento e cancelamento.
+// O token é do Firebase Cloud Messaging; um aparelho pertence a quem entrou por último nele.
+model DeviceToken {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String
+  token      String   @unique
+  platform   String // "android" | "ios"
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model PasswordResetToken {

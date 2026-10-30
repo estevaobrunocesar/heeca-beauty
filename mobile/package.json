@@ -1,0 +1,26 @@
+{
+  "name": "heeca-beauty-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App Heeca Beauty para as profissionais (Android e iOS): o painel do site dentro de um app nativo, com avisos no celular.",
+  "scripts": {
+    "sync": "cap sync",
+    "assets": "capacitor-assets generate --iconBackgroundColor #c8306f --splashBackgroundColor #c8306f",
+    "android": "cap open android",
+    "ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/core": "^7.4.0",
+    "@capacitor/ios": "^7.4.0",
+    "@capacitor/push-notifications": "^7.0.0",
+    "@capacitor/splash-screen": "^7.0.0",
+    "@capacitor/status-bar": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.4.0",
+    "typescript": "^5.6.0"
+  }
+}

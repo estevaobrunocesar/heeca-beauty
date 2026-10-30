@@ -249,3 +249,15 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 **Fora do código (infra e dados em produção).** (1) DNS curinga `*.beauty.heeca.com.br` (e `*.wellness...`) com certificado curinga e o domínio curinga no container da marca. (2) Renomear o identificador do Studio21 de `studio21-2` para `studio21` no Beauty e em `Subscription.externalTenantSlug` do portal, quando o identificador `studio21` estiver livre. Links antigos `/agendar/studio21-2` deixam de abrir depois da troca.
 
 **Consequência.** Só código, sem migração.
+
+## 2026-10-29 — App Heeca Beauty para Android e iOS (profissionais)
+
+**Contexto.** As profissionais precisam do Heeca Beauty no celular, nas lojas, para consultar a agenda, as clientes e a comissão e serem avisadas de novos agendamentos.
+
+**Decisão.** App em **Capacitor** (`mobile/`): o painel `https://beauty.heeca.com.br/app` dentro de um app nativo (`server.url`). Telas e regras continuam no servidor, então corrigir o painel não exige republicar nas lojas; um único projeto gera Android e iOS. O que o nativo acrescenta: ícone, tela de abertura e **avisos no celular**. Rejeitado: PWA (sem loja, aviso limitado no iPhone) e app nativo do zero (reescreveria telas e API).
+
+**Avisos.** Firebase Cloud Messaging (HTTP v1, sem dependência: `lib/push/fcm.ts`) para Android e iOS. `DeviceToken` (token único; um aparelho é de quem entrou por último nele), registrado em `POST /api/mobile/push-token` pelo `NativeShell`. Avisa as pessoas com login ligadas aos itens da visita: novo agendamento (com sinal Pix, só quando o Pix entra) e cancelamento **pela cliente**. Falha de aviso nunca derruba o agendamento nem a mudança de status. Sem `FCM_SERVICE_ACCOUNT_JSON` os avisos ficam desligados.
+
+**Fora do código.** Contas Google Play (US$ 25) e Apple Developer (US$ 99/ano), projeto Firebase (`google-services.json`, `GoogleService-Info.plist`, chave APNs), `FCM_SERVICE_ACCOUNT_JSON` no container e `prisma migrate deploy`. iPhone: Push Notifications e o pod do Firebase no Xcode (Mac). Passo a passo em `mobile/README.md`.
+
+**Consequência.** Migração `20261029180000_device_tokens` (tabela nova). `mobile/` fica fora do `tsc`, do `eslint` e da imagem Docker. A App Store (diretriz 4.2) pode recusar app que seja só um site; os avisos e a identidade própria são o que sustenta o app.

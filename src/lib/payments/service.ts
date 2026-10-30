@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getPixProvider } from "./index";
 // Dependência circular com appointments/service é segura: só funções, nada avaliado no carregamento.
 import { transition } from "@/lib/appointments/service";
+import { avisarProfissionais } from "@/lib/push/service";
 
 function appUrl() {
   return (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -55,6 +56,7 @@ export async function markPaymentPaid(paymentId: string) {
   const updated = await db.payment.update({ where: { id: payment.id }, data: { status: "PAID", paidAt: new Date() } });
   if (payment.appointment.status === "AWAITING_PAYMENT") {
     await transition({ appointmentId: payment.appointmentId, actor: "SYSTEM", to: "CONFIRMED" });
+    await avisarProfissionais(payment.appointmentId, "NOVO_AGENDAMENTO"); // com sinal, o agendamento só vale depois do Pix
   }
   return updated;
 }

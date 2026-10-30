@@ -9,3 +9,4 @@ docs
 !.env.example
 tsconfig.tsbuildinfo
 tests
+mobile

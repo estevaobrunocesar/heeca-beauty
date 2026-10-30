@@ -22,6 +22,7 @@ import { valeNaUnidade, unidadeDaVisita } from "@/lib/units/rules";
 import { isValidCpf, onlyCpfDigits } from "@/lib/cpf";
 import { pixProviderName } from "@/lib/payments";
 import { creditarCashbackDoAtendimento, estornarCashbackDoAtendimento } from "@/lib/loyalty/db";
+import { avisarProfissionais } from "@/lib/push/service";
 
 export class AppointmentError extends Error {
   constructor(message: string, readonly code: string = "APPOINTMENT_ERROR") {
@@ -284,6 +285,8 @@ export async function createAppointment(input: CreateInput) {
     const sent = await sendAppointmentMessage(appointment.id, "REQUEST_CONFIRMATION");
     if (sent?.ok) await transition({ appointmentId: appointment.id, actor: "SYSTEM", to: "AWAITING_CONFIRMATION", notify: false });
   }
+  // Aviso no celular da profissional (app). Sinal pendente só avisa quando o Pix entrar, na confirmação.
+  if (depositCents === 0) await avisarProfissionais(appointment.id, "NOVO_AGENDAMENTO");
   return appointment;
 }
 
@@ -353,6 +356,8 @@ export async function transition(input: TransitionInput) {
     if (to === "CONFIRMED") await sendAppointmentMessage(appt.id, "CONFIRMED");
     else if (isCancel) await sendAppointmentMessage(appt.id, "CANCELLED");
   }
+  // Cancelamento pela cliente avisa a profissional no app; a própria equipe cancelando já sabe.
+  if (to === "CANCELLED_BY_CLIENT") await avisarProfissionais(appt.id, "CANCELAMENTO");
   return updated;
 }
 
