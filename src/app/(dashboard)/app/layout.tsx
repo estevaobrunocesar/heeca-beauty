@@ -6,6 +6,7 @@ import { paleta } from "@/lib/marca";
 import { fmtDate } from "@/lib/dates";
 import { AppShell } from "@/components/dashboard/shell";
 import { NativeShell } from "@/components/dashboard/native-shell";
+import { InstalarApp } from "@/components/dashboard/instalar-app";
 
 const PAPEIS = { OWNER: "dona", MANAGER: "gerente", RECEPTION: "recepção", STAFF: "profissional" } as const;
 
@@ -33,6 +34,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         hoje={hoje.charAt(0).toUpperCase() + hoje.slice(1)}
       >
         <NativeShell />
+        <InstalarApp nome={marca.nome} />
         {children}
       </AppShell>
     </div>

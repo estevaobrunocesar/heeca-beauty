@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { marcaAtual } from "@/lib/marca-atual";
@@ -15,9 +15,15 @@ export async function generateMetadata(): Promise<Metadata> {
     title: { default: `${marca.nome} — Agendamento para ${marca.publico}`, template: `%s · ${marca.nome}` },
     description: marca.descricao,
     applicationName: marca.nome,
+    appleWebApp: { capable: true, title: marca.nome, statusBarStyle: "default" },
     icons: { icon: [{ url: `/brand/${marca.slug}/favicon.svg`, type: "image/svg+xml" }, { url: `/brand/${marca.slug}/favicon-32.png`, sizes: "32x32" }], apple: `/brand/${marca.slug}/apple-touch-icon.png` },
     openGraph: { siteName: marca.nome, locale: "pt_BR", images: [`/brand/${marca.slug}/og.png`] },
   };
+}
+
+// Cor da barra do celular = cor da família da marca do host.
+export async function generateViewport(): Promise<Viewport> {
+  return { themeColor: (await marcaAtual()).cor };
 }
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

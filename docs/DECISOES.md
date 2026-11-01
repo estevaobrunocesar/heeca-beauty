@@ -261,3 +261,11 @@ Registro cronológico. Cada entrada: contexto, decisão, alternativas descartada
 **Fora do código.** Contas Google Play (US$ 25) e Apple Developer (US$ 99/ano), projeto Firebase (`google-services.json`, `GoogleService-Info.plist`, chave APNs), `FCM_SERVICE_ACCOUNT_JSON` no container e `prisma migrate deploy`. iPhone: Push Notifications e o pod do Firebase no Xcode (Mac). Passo a passo em `mobile/README.md`.
 
 **Consequência.** Migração `20261029180000_device_tokens` (tabela nova). `mobile/` fica fora do `tsc`, do `eslint` e da imagem Docker. A App Store (diretriz 4.2) pode recusar app que seja só um site; os avisos e a identidade própria são o que sustenta o app.
+
+## 2026-11-01 — App instalável (PWA) no painel
+
+**Contexto.** A CredFusion pode ser instalada no celular pelo navegador; o painel do Beauty e do Wellness não oferecia isso.
+
+**Decisão.** PWA por marca, sem dependência nova: `src/app/manifest.ts` (nome, cor e ícones 192/512 da marca do host, abre em `/app`, `standalone`; regra pura em `lib/pwa.ts`), `public/sw.js` só com a página `/offline.html` para quando a rede cai e **sem cache de páginas ou dados** (agenda nunca desatualizada), e `InstalarApp` no painel (botão "Instalar app" no Chrome/Android; no iPhone, o passo "Compartilhar → Adicionar à Tela de Início"). Some quando já instalado, dentro do app da loja (Capacitor) ou se dispensado. `scripts/brand-assets.mjs` passa a copiar também `icon-512.png`.
+
+**Consequência.** Complementa o app das lojas (`mobile/`): o PWA não recebe aviso no iPhone de forma confiável; o aviso por push segue sendo do app nativo. Sem migração.

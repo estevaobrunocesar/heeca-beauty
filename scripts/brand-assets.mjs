@@ -16,6 +16,7 @@ const FILES = (m) => ({
   "favicon-32.png": `favicon/heeca-${m}-32.png`,
   "apple-touch-icon.png": `icon/heeca-${m}-app-icon-180.png`,
   "icon-192.png": `icon/heeca-${m}-app-icon-192.png`,
+  "icon-512.png": `icon/heeca-${m}-app-icon-512.png`,
   "og.png": `social/heeca-${m}-og.png`,
 });
 if (!existsSync(join(KIT, FILES(PROVISORIA)["favicon.svg"]))) { console.error(`kit não encontrado em ${KIT}; rode node ../brand/build.mjs`); process.exit(1); }
