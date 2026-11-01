@@ -52,15 +52,18 @@ export function InstalarApp({ nome }: { nome: string }) {
     if (outcome === "accepted") setAgoraNao(true);
   }
 
-  if (agoraNao || !convidarParaInstalar({ standalone, nativo, dispensado }) || (!evento && !ios)) return null;
+  if (agoraNao || !convidarParaInstalar({ standalone, nativo, dispensado })) return null;
   return (
     <div className="card mb-4 flex items-center justify-between gap-3 px-4 py-3 text-sm">
       <p className="min-w-0 flex-1 text-zinc-700">
         {ios
           ? <>Instale o {nome} no iPhone: toque em <strong>Compartilhar</strong> e depois em <strong>Adicionar à Tela de Início</strong>.</>
-          : <>Instale o {nome} e abra a agenda direto da tela inicial.</>}
+          : evento
+            ? <>Instale o {nome} e abra a agenda direto da tela inicial.</>
+            // O navegador não ofereceu a instalação (Safari/Firefox no computador, ou já instalado neste perfil): ensina o caminho manual.
+            : <>Instale o {nome} como app: no Chrome ou Edge, clique no ícone de instalar na barra de endereço (ou menu <strong>⋮</strong> → <strong>Instalar</strong>); no Safari do Mac, <strong>Arquivo</strong> → <strong>Adicionar ao Dock</strong>.</>}
       </p>
-      {!ios && <button type="button" onClick={instalar} className="btn-primary shrink-0">Instalar app</button>}
+      {evento && !ios && <button type="button" onClick={instalar} className="btn-primary shrink-0">Instalar app</button>}
       <button type="button" onClick={dispensar} className="shrink-0 text-xs text-zinc-500 hover:underline">Agora não</button>
     </div>
   );
