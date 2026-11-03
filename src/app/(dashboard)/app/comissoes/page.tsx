@@ -62,7 +62,8 @@ export default async function CommissionsPage({ searchParams }: PageProps<"/app/
         title="Comissões"
         description={ctx.seesTeam ? "Fechamento por profissional: o que foi apurado nas visitas concluídas e o que ainda falta acertar." : "Sua comissão nas visitas concluídas."}
         actions={
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {ctx.can("equipe") && <Link href="/app/comissoes/tabela" className="btn-ghost px-3 py-1">Tabela de comissões</Link>}
             <Link href={`/app/comissoes?mes=${shiftMonth(month, -1)}`} className="btn-ghost px-2 py-1">‹</Link>
             <span className="min-w-40 text-center font-medium capitalize">{monthLabel(month)}</span>
             <Link href={`/app/comissoes?mes=${shiftMonth(month, 1)}`} className="btn-ghost px-2 py-1">›</Link>
@@ -93,10 +94,7 @@ export default async function CommissionsPage({ searchParams }: PageProps<"/app/
                   <div className="flex flex-wrap items-center gap-4">
                     <div className="flex min-w-48 items-center gap-2">
                       <Avatar name={p.name} photoUrl={p.photoUrl} size="sm" />
-                      <div>
-                        <p className="font-medium">{p.name}</p>
-                        <p className="text-xs text-zinc-500">{p.commissionPercent != null ? `${p.commissionPercent}% padrão` : "sem comissão padrão"}</p>
-                      </div>
+                      <p className="font-medium">{p.name}</p>
                     </div>
                     <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
                       <Cell k="Serviços" v={String(s.count)} />
@@ -132,7 +130,7 @@ export default async function CommissionsPage({ searchParams }: PageProps<"/app/
               );
             })}
           </div>
-          <p className="text-xs text-zinc-400">Período: {fmtDate(fromUtc, tz)} a {to.split("-").reverse().join("/")}. A comissão fica gravada na visita no momento da conclusão; mudar o percentual depois não altera fechamentos anteriores.</p>
+          <p className="text-xs text-zinc-400">Período: {fmtDate(fromUtc, tz)} a {to.split("-").reverse().join("/")}. A comissão fica gravada na visita no momento da conclusão; mudar a tabela ou um acordo depois não altera fechamentos anteriores.</p>
         </div>
       )}
     </>

@@ -200,8 +200,9 @@ model Professional {
   unitId      String? // unidade onde atende; null = qualquer unidade (ou estabelecimento de unidade única)
   unit        Unit?   @relation(fields: [unitId], references: [id], onDelete: SetNull)
 
-  // Comissão padrão do profissional (SPEC §17). Pode ser sobrescrita por serviço em ProfessionalService.
-  // null = não comissionado (ex.: dono do salão). Percentual inteiro 0..100.
+  // LEGADO: antes havia uma comissão geral por profissional. Hoje a comissão vem do acordo individual
+  // (ProfessionalService) ou da tabela padrão do serviço (Service). Não é mais lida nem editada; a migração
+  // 20261102120000 copiou o valor para os acordos que ainda não tinham comissão.
   commissionPercent Int?
 
   createdAt DateTime @default(now())
@@ -263,6 +264,10 @@ model Service {
   roomRequired        Boolean   @default(false)
   bufferBeforeMinutes Int       @default(0)
   bufferAfterMinutes  Int       @default(0)
+  // Tabela de comissões padrão (vale para todos): quem não tem acordo próprio neste serviço recebe isto.
+  // O acordo individual está em ProfessionalService. Valor fixo por atendimento tem precedência sobre o percentual.
+  commissionPercent    Int? // 0..100
+  commissionFixedCents Int?
   sortOrder           Int       @default(0)
   deletedAt           DateTime? // soft delete: agendamentos antigos continuam referenciando
   createdAt           DateTime  @default(now())
@@ -391,7 +396,7 @@ model ProfessionalService {
   professionalId String
   serviceId      String
 
-  // Comissão específica deste par (SPEC §17). null = usa Professional.commissionPercent.
+  // Acordo deste profissional neste serviço (SPEC §17). null nos dois = vale a tabela padrão do serviço (Service).
   commissionPercent    Int? // 0..100
   commissionFixedCents Int? // valor fixo por execução; tem precedência sobre o percentual
 

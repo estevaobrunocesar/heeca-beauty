@@ -67,8 +67,8 @@ async function main() {
   const marianaUser = await db.user.create({
     data: { tenantId: tenant.id, name: "Mariana Santos", email: "mariana@heeca.app", passwordHash: await bcrypt.hash("mari1234", 10), role: "STAFF" },
   });
-  const mariana = await db.professional.create({ data: { tenantId: tenant.id, userId: marianaUser.id, name: "Mariana", bio: "Manicure, pedicure e nail designer.", specialties: "Unhas", commissionPercent: 50, sortOrder: 1 } });
-  const carlos = await db.professional.create({ data: { tenantId: tenant.id, name: "Carlos", bio: "Barbeiro.", specialties: "Corte masculino, barba", commissionPercent: 40, sortOrder: 2 } });
+  const mariana = await db.professional.create({ data: { tenantId: tenant.id, userId: marianaUser.id, name: "Mariana", bio: "Manicure, pedicure e nail designer.", specialties: "Unhas", sortOrder: 1 } });
+  const carlos = await db.professional.create({ data: { tenantId: tenant.id, name: "Carlos", bio: "Barbeiro.", specialties: "Corte masculino, barba", sortOrder: 2 } });
 
   await db.availabilityRule.createMany({
     data: [
@@ -117,10 +117,15 @@ async function main() {
   await db.professionalService.createMany({
     data: [
       ...[corte, escova, hidratacao, coloracao, sobrancelha, reconstrucao].map((s) => ({ professionalId: ana.id, serviceId: s.id })),
-      ...[manicure, pedicure, gel, sobrancelha, nailArt, francesinha].map((s) => ({ professionalId: mariana.id, serviceId: s.id })),
-      ...[corteMasc, barba].map((s) => ({ professionalId: carlos.id, serviceId: s.id })),
+      // Acordos de comissão: Mariana combinou 50% nas unhas; Carlos, 35% na barba. O resto vale a tabela padrão.
+      ...[manicure, pedicure, gel].map((s) => ({ professionalId: mariana.id, serviceId: s.id, commissionPercent: 50 })),
+      ...[sobrancelha, nailArt, francesinha].map((s) => ({ professionalId: mariana.id, serviceId: s.id })),
+      { professionalId: carlos.id, serviceId: corteMasc.id },
+      { professionalId: carlos.id, serviceId: barba.id, commissionPercent: 35 },
     ],
   });
+  // Tabela de comissões padrão (vale para todos): 40% nos serviços do salão.
+  await db.service.updateMany({ where: { tenantId: tenant.id, isAddOn: false }, data: { commissionPercent: 40 } });
 
   // Portfólio (SPEC §21)
   const photos = [

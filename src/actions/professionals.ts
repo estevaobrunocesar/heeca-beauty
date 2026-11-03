@@ -9,6 +9,7 @@ import { hhmmToMinutes, WEEKDAY_NAMES } from "@/lib/dates";
 import { fail, success, type ActionResult } from "@/lib/action-result";
 import { discardReplaced, guardImageUrl, IMAGE_REJECTED } from "@/lib/storage/guard";
 import { PERMISSION_KEYS, normalizarMarcadas, overridesDoMarcado, type PermissionKey } from "@/lib/permissions/rules";
+import { parseCommissionField } from "@/lib/commissions";
 import { Prisma } from "@/generated/prisma/client";
 
 const profileSchema = z.object({
@@ -18,13 +19,8 @@ const profileSchema = z.object({
   phone: z.string().trim().max(30).optional().or(z.literal("")),
   email: z.string().trim().email("E-mail inválido").optional().or(z.literal("")),
   specialties: z.string().trim().max(120).optional().or(z.literal("")),
-  // Comissão padrão (SPEC §17): vazio = não comissionado
-  commissionPercent: z.union([z.literal(""), z.coerce.number().int().min(0, "Comissão entre 0 e 100").max(100, "Comissão entre 0 e 100")]).optional(),
   active: z.coerce.boolean().optional(),
 });
-
-/** Percentual válido ou null (campo vazio / ausente). */
-const pct = (v: string | number | undefined) => (v === "" || v == null ? null : Number(v));
 
 function revalidateTeam(id?: string) {
   revalidatePath("/app", "layout"); // sidebar, agenda, dashboard usam a lista de profissionais
@@ -52,7 +48,6 @@ export async function createProfessionalAction(_prev: ActionResult, formData: Fo
       bio: d.bio || null,
       photoUrl: photo.url,
       phone: d.phone || null, email: d.email || null, specialties: d.specialties || null,
-      commissionPercent: pct(d.commissionPercent),
       sortOrder: (last?.sortOrder ?? 0) + 1,
       // Novo profissional executa todos os serviços; ajuste na página dele.
       services: { create: services.map((s) => ({ serviceId: s.id })) },
@@ -88,20 +83,24 @@ export async function updateProfessionalAction(id: string, _prev: ActionResult, 
 
   // STAFF edita só perfil; ativar/desativar, serviços e comissões são do responsável.
   const serviceIds = formData.getAll("serviceIds").map(String);
-  // Comissão específica por serviço (SPEC §17): campo "commission_<serviceId>", vazio = herda a do profissional.
-  const overrideFor = (serviceId: string): number | null => {
-    const raw = String(formData.get(`commission_${serviceId}`) ?? "").trim();
-    if (raw === "") return null;
-    const n = Number(raw);
-    return Number.isInteger(n) && n >= 0 && n <= 100 ? n : null;
-  };
+  // Acordo de comissão por serviço (SPEC §17): "commission_<serviceId>" + "commissionKind_<serviceId>" (pct | brl).
+  // Vazio = sem acordo, vale a tabela padrão do serviço.
+  const agreements = new Map<string, { percent: number | null; fixedCents: number | null }>();
+  if (ctx.can("equipe")) {
+    for (const serviceId of serviceIds) {
+      const raw = String(formData.get(`commission_${serviceId}`) ?? "");
+      const terms = parseCommissionField(String(formData.get(`commissionKind_${serviceId}`) ?? "pct"), raw);
+      if (!terms) return fail("Comissão inválida: use um percentual de 0 a 100 ou um valor em reais.");
+      agreements.set(serviceId, { percent: terms.percent ?? null, fixedCents: terms.fixedCents ?? null });
+    }
+  }
   await db.$transaction(async (tx) => {
     await tx.professional.update({
       where: { id },
       data: {
         name: d.name, bio: d.bio || null, photoUrl: photo.url,
         phone: d.phone || null, email: d.email || null, specialties: d.specialties || null,
-        ...(ctx.can("equipe") ? { active: d.active ?? false, commissionPercent: pct(d.commissionPercent) } : {}),
+        ...(ctx.can("equipe") ? { active: d.active ?? false } : {}),
         ...(ctx.can("equipe") && formData.has("unitId") ? { unitId: unitId } : {}),
       },
     });
@@ -109,7 +108,9 @@ export async function updateProfessionalAction(id: string, _prev: ActionResult, 
       await tx.professionalService.deleteMany({ where: { professionalId: id } });
       if (serviceIds.length) {
         const valid = await tx.service.findMany({ where: { id: { in: serviceIds }, tenantId: ctx.tenant.id }, select: { id: true } });
-        await tx.professionalService.createMany({ data: valid.map((s) => ({ professionalId: id, serviceId: s.id, commissionPercent: overrideFor(s.id) })) });
+        await tx.professionalService.createMany({
+          data: valid.map((s) => ({ professionalId: id, serviceId: s.id, commissionPercent: agreements.get(s.id)?.percent ?? null, commissionFixedCents: agreements.get(s.id)?.fixedCents ?? null })),
+        });
       }
     }
   });

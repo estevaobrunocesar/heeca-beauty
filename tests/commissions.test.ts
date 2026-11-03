@@ -1,27 +1,70 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { commissionCentsFor, summarizeCommissions } from "../src/lib/commissions";
+import { commissionCentsFor, describeCommission, parseCommissionField, summarizeCommissions } from "../src/lib/commissions";
 
 describe("commissionCentsFor", () => {
-  it("usa o percentual padrão do profissional sobre o preço do item (com adicionais)", () => {
-    assert.equal(commissionCentsFor(8000, { professionalPercent: 40 }), 3200); // SPEC §17: Corte R$ 80 · 40% = R$ 32
-    assert.equal(commissionCentsFor(10500, { professionalPercent: 40 }), 4200); // Corte + adicional
+  it("sem acordo, vale a tabela padrão do serviço, sobre o preço do item (com adicionais)", () => {
+    assert.equal(commissionCentsFor(8000, { standard: { percent: 40 } }), 3200); // SPEC §17: Corte R$ 80 · 40% = R$ 32
+    assert.equal(commissionCentsFor(10500, { standard: { percent: 40 } }), 4200); // Corte + adicional
   });
-  it("percentual por serviço tem precedência sobre o padrão", () => {
-    assert.equal(commissionCentsFor(8000, { professionalPercent: 40, overridePercent: 50 }), 4000);
-    assert.equal(commissionCentsFor(8000, { professionalPercent: null, overridePercent: 30 }), 2400);
+  it("o acordo do profissional neste serviço tem precedência sobre a tabela padrão", () => {
+    assert.equal(commissionCentsFor(8000, { agreement: { percent: 50 }, standard: { percent: 40 } }), 4000);
+    assert.equal(commissionCentsFor(8000, { agreement: { percent: 30 } }), 2400);
   });
-  it("valor fixo por execução tem precedência sobre qualquer percentual", () => {
-    assert.equal(commissionCentsFor(8000, { professionalPercent: 40, overridePercent: 50, overrideFixedCents: 1500 }), 1500);
+  it("cada profissional pode ter um acordo diferente no mesmo serviço", () => {
+    const standard = { percent: 40 };
+    assert.equal(commissionCentsFor(8000, { agreement: { percent: 50 }, standard }), 4000);
+    assert.equal(commissionCentsFor(8000, { agreement: { percent: 35 }, standard }), 2800);
+    assert.equal(commissionCentsFor(8000, { agreement: {}, standard }), 3200); // sem acordo: tabela
+  });
+  it("valor fixo vale mais que percentual dentro do mesmo nível", () => {
+    assert.equal(commissionCentsFor(8000, { agreement: { percent: 50, fixedCents: 1500 } }), 1500);
+    assert.equal(commissionCentsFor(8000, { standard: { percent: 40, fixedCents: 2000 } }), 2000);
+  });
+  it("o acordo em percentual vence a tabela mesmo que a tabela seja em valor fixo", () => {
+    assert.equal(commissionCentsFor(8000, { agreement: { percent: 10 }, standard: { fixedCents: 2000 } }), 800);
+  });
+  it("acordo de 0% é um acordo (comissão zero), não 'sem regra'", () => {
+    assert.equal(commissionCentsFor(8000, { agreement: { percent: 0 }, standard: { percent: 40 } }), 0);
   });
   it("sem regra → null (não comissionado), e não zero", () => {
-    assert.equal(commissionCentsFor(8000, { professionalPercent: null }), null);
-    assert.equal(commissionCentsFor(8000, { professionalPercent: null, overridePercent: null, overrideFixedCents: null }), null);
+    assert.equal(commissionCentsFor(8000, {}), null);
+    assert.equal(commissionCentsFor(8000, { agreement: { percent: null, fixedCents: null }, standard: { percent: null, fixedCents: null } }), null);
   });
   it("arredonda para o centavo mais próximo e limita o percentual a 0..100", () => {
-    assert.equal(commissionCentsFor(3333, { professionalPercent: 33 }), 1100); // 1099,89 → 1100
-    assert.equal(commissionCentsFor(3333, { professionalPercent: 150 }), 3333);
-    assert.equal(commissionCentsFor(3333, { professionalPercent: -5 }), 0);
+    assert.equal(commissionCentsFor(3333, { standard: { percent: 33 } }), 1100); // 1099,89 → 1100
+    assert.equal(commissionCentsFor(3333, { standard: { percent: 150 } }), 3333);
+    assert.equal(commissionCentsFor(3333, { standard: { percent: -5 } }), 0);
+  });
+});
+
+describe("parseCommissionField", () => {
+  it("vazio herda: não há comissão própria", () => {
+    assert.deepEqual(parseCommissionField("pct", ""), {});
+    assert.deepEqual(parseCommissionField("brl", "  "), {});
+  });
+  it("percentual inteiro entre 0 e 100", () => {
+    assert.deepEqual(parseCommissionField("pct", "40"), { percent: 40 });
+    assert.deepEqual(parseCommissionField("pct", "0"), { percent: 0 });
+    assert.equal(parseCommissionField("pct", "101"), null);
+    assert.equal(parseCommissionField("pct", "12,5"), null);
+    assert.equal(parseCommissionField("pct", "abc"), null);
+  });
+  it("valor fixo em reais vira centavos", () => {
+    assert.deepEqual(parseCommissionField("brl", "25"), { fixedCents: 2500 });
+    assert.deepEqual(parseCommissionField("brl", "R$ 12,50"), { fixedCents: 1250 });
+    assert.equal(parseCommissionField("brl", "-3"), null);
+  });
+});
+
+describe("describeCommission", () => {
+  const brl = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
+  it("mostra o valor fixo, o percentual ou um traço", () => {
+    assert.equal(describeCommission({ fixedCents: 2500 }, brl), "R$ 25,00");
+    assert.equal(describeCommission({ percent: 40 }, brl), "40%");
+    assert.equal(describeCommission({ percent: 0 }, brl), "0%");
+    assert.equal(describeCommission({}, brl), "—");
+    assert.equal(describeCommission(null, brl), "—");
   });
 });
 

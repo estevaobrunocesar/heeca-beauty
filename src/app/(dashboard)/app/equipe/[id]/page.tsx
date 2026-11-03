@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
 import { minutesToHHMM } from "@/lib/dates";
+import { describeCommission } from "@/lib/commissions";
+import { formatCents } from "@/lib/money";
 import { PageHeader } from "@/components/ui/page-header";
 import { WeeklyHoursForm, type DayValue } from "@/components/dashboard/weekly-hours-form";
 import { ProfileForm } from "./profile-form";
@@ -18,7 +20,7 @@ export default async function ProfessionalPage({ params }: PageProps<"/app/equip
   if (!ctx.can("equipe") && ctx.user.professional?.id !== id) redirect("/app");
 
   const [services, rules, user, units] = await Promise.all([
-    db.service.findMany({ where: { tenantId: ctx.tenant.id, deletedAt: null }, orderBy: { sortOrder: "asc" }, include: { professionals: { where: { professionalId: id }, select: { professionalId: true, commissionPercent: true } } } }),
+    db.service.findMany({ where: { tenantId: ctx.tenant.id, deletedAt: null }, orderBy: { sortOrder: "asc" }, include: { professionals: { where: { professionalId: id }, select: { professionalId: true, commissionPercent: true, commissionFixedCents: true } } } }),
     db.availabilityRule.findMany({ where: { professionalId: id } }),
     pro.userId ? db.user.findUnique({ where: { id: pro.userId }, select: { email: true, role: true, permissions: true } }) : null,
     db.unit.findMany({ where: { tenantId: ctx.tenant.id, active: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
@@ -47,9 +49,13 @@ export default async function ProfessionalPage({ params }: PageProps<"/app/equip
           <ProfileForm
             id={pro.id}
             canManage={ctx.can("equipe")}
-            initial={{ name: pro.name, bio: pro.bio ?? "", photoUrl: pro.photoUrl ?? "", phone: pro.phone ?? "", email: pro.email ?? "", specialties: pro.specialties ?? "", commissionPercent: pro.commissionPercent, active: pro.active, unitId: pro.unitId ?? "" }}
+            initial={{ name: pro.name, bio: pro.bio ?? "", photoUrl: pro.photoUrl ?? "", phone: pro.phone ?? "", email: pro.email ?? "", specialties: pro.specialties ?? "", active: pro.active, unitId: pro.unitId ?? "" }}
             units={units}
-            services={services.map((s) => ({ id: s.id, name: s.name, active: s.active, checked: s.professionals.length > 0, commissionPercent: s.professionals[0]?.commissionPercent ?? null }))}
+            services={services.map((s) => ({
+              id: s.id, name: s.name, active: s.active, checked: s.professionals.length > 0,
+              agreement: { percent: s.professionals[0]?.commissionPercent ?? null, fixedCents: s.professionals[0]?.commissionFixedCents ?? null },
+              standardLabel: describeCommission({ percent: s.commissionPercent, fixedCents: s.commissionFixedCents }, formatCents),
+            }))}
           />
         </div>
 

@@ -494,25 +494,24 @@ export async function sendDueReminders(now = new Date()) {
 // ───────────── Comissões (SPEC §17) ─────────────
 
 /**
- * Grava `commissionCents` em cada item da visita usando a regra vigente do par profissional×serviço.
- * Snapshot: mudar a comissão do profissional depois não altera visitas já concluídas.
+ * Grava `commissionCents` em cada item da visita: acordo do profissional neste serviço ou, sem acordo, a tabela
+ * padrão do serviço (`commissionCentsFor`).
+ * Snapshot: mudar a comissão depois não altera visitas já concluídas.
  * Itens já acertados (commissionPaidAt) não são recalculados.
  */
 export async function settleCommissions(appointmentId: string) {
   const items = await db.appointmentItem.findMany({
     where: { appointmentId, commissionPaidAt: null },
     include: {
-      professional: { select: { commissionPercent: true } },
-      service: { select: { professionals: { select: { professionalId: true, commissionPercent: true, commissionFixedCents: true } } } },
+      service: { select: { commissionPercent: true, commissionFixedCents: true, professionals: { select: { professionalId: true, commissionPercent: true, commissionFixedCents: true } } } },
     },
   });
   await db.$transaction(
     items.map((it) => {
       const pair = it.service.professionals.find((ps) => ps.professionalId === it.professionalId);
       const commissionCents = commissionCentsFor(it.priceCents, {
-        professionalPercent: it.professional.commissionPercent,
-        overridePercent: pair?.commissionPercent,
-        overrideFixedCents: pair?.commissionFixedCents,
+        agreement: { percent: pair?.commissionPercent, fixedCents: pair?.commissionFixedCents },
+        standard: { percent: it.service.commissionPercent, fixedCents: it.service.commissionFixedCents },
       });
       return db.appointmentItem.update({ where: { id: it.id }, data: { commissionCents } });
     }),

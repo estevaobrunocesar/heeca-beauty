@@ -13,8 +13,8 @@ async function main() {
   });
   if (!appt) throw new Error("visita da seed não encontrada (rode o seed)");
   await transition({ appointmentId: appt.id, tenantId: appt.tenantId, actor: "PROFESSIONAL", to: "COMPLETED", notify: false });
-  const after = await db.appointmentItem.findMany({ where: { appointmentId: appt.id }, orderBy: { sortOrder: "asc" }, include: { professional: { select: { name: true, commissionPercent: true } } } });
-  for (const it of after) console.log(`${it.serviceName.padEnd(28)} ${it.professional.name.padEnd(8)} ${String(it.professional.commissionPercent ?? "—").padStart(3)}%  preço ${it.priceCents}  comissão ${it.commissionCents ?? "null"}`);
+  const after = await db.appointmentItem.findMany({ where: { appointmentId: appt.id }, orderBy: { sortOrder: "asc" }, include: { professional: { select: { name: true } } } });
+  for (const it of after) console.log(`${it.serviceName.padEnd(28)} ${it.professional.name.padEnd(8)} preço ${it.priceCents}  comissão ${it.commissionCents ?? "null"}`);
   // Reabre para não sujar a seed
   await transition({ appointmentId: appt.id, tenantId: appt.tenantId, actor: "PROFESSIONAL", to: "CONFIRMED", notify: false });
   const reopened = await db.appointmentItem.findMany({ where: { appointmentId: appt.id }, select: { commissionCents: true } });
