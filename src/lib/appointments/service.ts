@@ -6,7 +6,7 @@ import type { AppointmentActor, AppointmentSource, AppointmentStatus, PaymentMet
 import { parseClientPhone } from "@/lib/phone";
 import { getVisitSlots, occupiedUtc, placeItemsInVisit } from "@/lib/scheduling/service";
 import { visitIsParallel } from "@/lib/scheduling/availability";
-import { espelharVisita, vincularVisita } from "@/lib/packages/service";
+import { desvincularItem, espelharVisita, vincularVisita } from "@/lib/packages/service";
 import type { ExistingItem, VisitItem } from "@/lib/scheduling/availability";
 import { minutesToHHMM, toDateKey, toMinutesOfDay, zonedDateTimeToUtc } from "@/lib/dates";
 import { sendAppointmentMessage } from "@/lib/whatsapp/service";
@@ -654,6 +654,115 @@ export async function completeAppointment(input: { appointmentId: string; tenant
     });
   }
   return created;
+}
+
+// ───────────── Trocar o serviço de um item do agendamento ─────────────
+
+/**
+ * Troca o procedimento de um item de um agendamento ativo (a cliente marcou um e decidiu fazer outro). O item continua no mesmo
+ * horário de início; duração, valor, adicionais, sala e recursos passam a ser os do serviço novo. O profissional segue o mesmo
+ * se ele faz o serviço novo, senão a recepção escolhe outro. Precisa caber na agenda (profissional, sala, recursos) e, numa visita
+ * em fila, não pode invadir o serviço seguinte: nesse caso a recepção reagenda a visita. A comissão é apurada ao concluir, já com
+ * o serviço novo. Fica registrado no histórico (de qual serviço para qual).
+ */
+export async function replaceItemService(input: { tenant: Tenant; appointmentId: string; itemId: string; serviceId: string; professionalId?: string | null; addOnIds?: string[]; actor: AppointmentActor }) {
+  const { tenant } = input;
+  const tz = tenant.timezone;
+  const appt = await db.appointment.findFirst({
+    where: { id: input.appointmentId, tenantId: tenant.id },
+    include: { items: { orderBy: { sortOrder: "asc" }, include: { resources: { select: { resourceId: true, quantity: true } } } } },
+  });
+  if (!appt) throw new AppointmentError("Agendamento não encontrado.", "NOT_FOUND");
+  if (!ACTIVE_STATUSES.includes(appt.status)) throw new AppointmentError("Só dá para trocar o serviço de agendamentos ativos, antes de concluir.", "NOT_ACTIVE");
+  const item = appt.items.find((i) => i.id === input.itemId);
+  if (!item) throw new AppointmentError("Serviço não encontrado neste agendamento.", "NOT_FOUND");
+
+  // Quem faz: o mesmo profissional, se ele realiza o serviço novo; senão o escolhido.
+  const professionalId = input.professionalId || item.professionalId;
+  const [r] = await resolveVisitItems(tenant.id, [{ serviceId: input.serviceId, professionalId, addOnIds: input.addOnIds }], appt.unitId);
+
+  const dateKey = toDateKey(item.startsAt, tz);
+  const start = toMinutesOfDay(item.startsAt, tz);
+  const novoFim = start + r.durationMinutes;
+  const demais = appt.items.filter((i) => i.id !== item.id);
+  // Em fila, o serviço novo não pode passar do começo do seguinte (que continua onde estava).
+  const parallel = visitIsParallel(appt.items);
+  const seguinte = demais.filter((i) => i.sortOrder > item.sortOrder).sort((a, b) => a.sortOrder - b.sortOrder)[0];
+  if (!parallel && seguinte && novoFim > toMinutesOfDay(seguinte.startsAt, tz)) {
+    throw new AppointmentError(`"${r.service.name}" termina às ${minutesToHHMM(novoFim)} e invade o serviço seguinte. Reagende a visita para ajustar os horários.`, "OVERLAPS_NEXT");
+  }
+
+  const existing: ExistingItem[] = demais.map((i) => ({
+    professionalId: i.professionalId, roomId: i.roomId, start: toMinutesOfDay(i.startsAt, tz), end: toMinutesOfDay(i.endsAt, tz),
+    bufferBeforeMinutes: i.bufferBeforeMinutes, bufferAfterMinutes: i.bufferAfterMinutes, resources: i.resources,
+  }));
+  const placements = await placeItemsInVisit({ tenant, items: [r.visitItem], existing, dateKey, startMinutes: start, parallel: false, excludeAppointmentId: appt.id });
+  if (!placements || placements[0].start !== start) {
+    const nome = (await db.professional.findUnique({ where: { id: professionalId }, select: { name: true } }))?.name ?? "O profissional";
+    throw new AppointmentError(`${nome} não está livre das ${minutesToHHMM(start)} às ${minutesToHHMM(novoFim)} para "${r.service.name}".`, "SLOT_UNAVAILABLE");
+  }
+  const p = placements[0];
+  const startsAt = zonedDateTimeToUtc(dateKey, p.start, tz);
+  const endsAt = zonedDateTimeToUtc(dateKey, p.end, tz);
+
+  const updated = await db.$transaction(
+    async (tx) => {
+      // Proteção contra corrida: outra recepção marcando o mesmo profissional/sala ao mesmo tempo.
+      const concorrentes = await tx.appointmentItem.count({
+        where: { professionalId: p.professionalId, appointmentId: { not: appt.id }, appointment: { status: { in: ACTIVE_STATUSES } }, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
+      });
+      if (concorrentes >= tenant.maxConcurrentAppointments) throw new AppointmentError("Este horário acabou de ser reservado por outra pessoa.", "SLOT_UNAVAILABLE");
+      await tx.appointmentAddOn.deleteMany({ where: { itemId: item.id } });
+      await tx.appointmentItemResource.deleteMany({ where: { itemId: item.id } });
+      const novo = await tx.appointmentItem.update({
+        where: { id: item.id },
+        data: {
+          professionalId: p.professionalId, roomId: p.roomId, serviceId: r.service.id, startsAt, endsAt,
+          serviceName: r.serviceName, durationMinutes: r.durationMinutes, priceCents: r.priceCents,
+          bufferBeforeMinutes: r.visitItem.bufferBeforeMinutes ?? 0, bufferAfterMinutes: r.visitItem.bufferAfterMinutes ?? 0,
+          commissionCents: null,
+          addOns: { create: r.addOns.map((a) => ({ serviceId: a.id, name: a.name, durationMinutes: a.durationMinutes, priceCents: a.priceCents })) },
+          resources: { create: (r.visitItem.resources ?? []).map((n) => ({ resourceId: n.resourceId, quantity: n.quantity })) },
+        },
+      });
+      if (p.roomId) {
+        const ocupada = occupiedUtc(novo);
+        const outras = await tx.appointmentItem.findMany({
+          where: { roomId: p.roomId, id: { not: novo.id }, appointment: { status: { in: ACTIVE_STATUSES } }, startsAt: { lt: new Date(ocupada.endsAt.getTime() + 86_400_000) }, endsAt: { gt: new Date(ocupada.startsAt.getTime() - 86_400_000) } },
+          select: { startsAt: true, endsAt: true, bufferBeforeMinutes: true, bufferAfterMinutes: true },
+        });
+        if (outras.some((o) => { const oc = occupiedUtc(o); return oc.startsAt < ocupada.endsAt && oc.endsAt > ocupada.startsAt; })) {
+          throw new AppointmentError("Esta sala acabou de ser reservada por outra pessoa.", "SLOT_UNAVAILABLE");
+        }
+      }
+      const todos = await tx.appointmentItem.findMany({ where: { appointmentId: appt.id }, orderBy: { sortOrder: "asc" }, select: { serviceName: true, startsAt: true, endsAt: true, priceCents: true } });
+      const inicio = new Date(Math.min(...todos.map((i) => i.startsAt.getTime())));
+      const fim = new Date(Math.max(...todos.map((i) => i.endsAt.getTime())));
+      await tx.appointment.update({
+        where: { id: appt.id },
+        data: {
+          startsAt: inicio, endsAt: fim,
+          serviceName: describeVisit(todos),
+          priceCents: todos.reduce((n, i) => n + i.priceCents, 0),
+          durationMinutes: Math.round((fim.getTime() - inicio.getTime()) / 60_000),
+          // Mudou o que será feito: o lembrete vai com o serviço novo.
+          reminderSentAt: null,
+          events: {
+            create: {
+              tenantId: tenant.id, actor: input.actor, type: "ITEM_REPLACED",
+              data: { itemId: item.id, fromServiceName: item.serviceName, toServiceName: r.serviceName, fromPriceCents: item.priceCents, toPriceCents: r.priceCents, professionalId: p.professionalId },
+            },
+          },
+        },
+      });
+      return novo;
+    },
+    { isolationLevel: "Serializable" },
+  );
+  // A sessão de pacote era do serviço antigo: solta e deixa o pacote que cobrir o serviço novo (se houver) reservar a sua.
+  await desvincularItem(tenant, item.id);
+  await vincularVisita(tenant, appt.id);
+  return updated;
 }
 
 // ───────────── Trocar o profissional de um serviço do agendamento ─────────────

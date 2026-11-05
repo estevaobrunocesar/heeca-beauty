@@ -18,6 +18,7 @@ import { moduloClinicoAtivo } from "@/lib/treatments/rules";
 import { visitIsParallel } from "@/lib/scheduling/availability";
 import { AddServiceCard } from "./add-service";
 import { ChangeProfessional } from "./change-professional";
+import { ReplaceService } from "./replace-service";
 import { PaymentMethodPicker } from "./payment-method";
 import type { Method } from "@/lib/finance/rules";
 import { SessionEvolution } from "../../pacotes/[id]/clinical-tools";
@@ -96,6 +97,14 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
                         <span className="flex items-center gap-1 text-zinc-600"><Avatar name={it.professional.name} photoUrl={it.professional.photoUrl} size="sm" /> {it.professional.name}</span>
                       )}
                       {podeTrocar && <ChangeProfessional appointmentId={a.id} itemId={it.id} options={opcoesDoServico(it.serviceId, it.professionalId)} />}
+                      {podeTrocar && (
+                        <ReplaceService
+                          appointmentId={a.id} itemId={it.id} currentServiceId={it.serviceId} currentProfessionalId={it.professionalId}
+                          services={servicosAtivos.filter((x) => !x.isAddOn).map((x) => ({ id: x.id, name: x.name, durationMinutes: x.durationMinutes, priceCents: x.priceCents, professionalIds: x.professionals.map((p) => p.professionalId) }))}
+                          addOns={servicosAtivos.filter((x) => x.isAddOn).map((x) => ({ id: x.id, name: x.name, durationMinutes: x.durationMinutes, priceCents: x.priceCents }))}
+                          professionals={equipe.map((p) => ({ id: p.id, name: p.name }))}
+                        />
+                      )}
                       {/* Evolução clínica da sessão (módulo Estética): gestão ou o profissional que atendeu; recepção não vê. */}
                       {it.packageSession?.status === "DONE" && ctx.role !== "RECEPTION" && moduloClinicoAtivo(tenant.segmentos) && (ctx.canManage || ctx.professionals.some((p) => p.id === it.professional.id)) && (
                         <div className="basis-full pl-[6.5rem]"><SessionEvolution sessionId={it.packageSession.id} productsUsed={it.packageSession.productsUsed} evolution={it.packageSession.evolution} /></div>
@@ -161,6 +170,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
                     {e.type === "STATUS_CHANGED" && `${e.fromStatus ? STATUS_LABELS[e.fromStatus] : "?"} → ${e.toStatus ? STATUS_LABELS[e.toStatus] : "?"}`}
                     {e.type === "RESCHEDULED" && "Reagendado"}
                     {e.type === "PROFESSIONAL_CHANGED" && `Profissional trocado em ${(e.data as { serviceName?: string } | null)?.serviceName ?? "serviço"}: ${(e.data as { fromName?: string | null } | null)?.fromName ?? "?"} → ${(e.data as { toName?: string } | null)?.toName ?? "?"}`}
+                    {e.type === "ITEM_REPLACED" && `Serviço trocado: ${(e.data as { fromServiceName?: string } | null)?.fromServiceName ?? "?"} → ${(e.data as { toServiceName?: string } | null)?.toServiceName ?? "?"}`}
                     {e.type === "ITEMS_ADDED" && `Serviço acrescentado: ${(e.data as { serviceName?: string } | null)?.serviceName ?? ""}`}
                     {e.type === "CHARGES_ADDED" && `Valores adicionais lançados: ${formatCents((e.data as { totalCents?: number } | null)?.totalCents ?? 0)}`}
                     <span className="ml-1 text-xs text-zinc-400">· {e.actor === "CLIENT" ? "cliente" : e.actor === "PROFESSIONAL" ? "você" : "sistema"}</span>

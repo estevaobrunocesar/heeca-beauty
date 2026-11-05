@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireAuth, resolveProfessional, type AuthContext } from "@/lib/auth/session";
-import { addServiceToAppointment, AppointmentError, changeItemProfessional, completeAppointment, createAppointment, MAX_ITEMS_PER_VISIT, reschedule, transition } from "@/lib/appointments/service";
+import { addServiceToAppointment, AppointmentError, changeItemProfessional, completeAppointment, createAppointment, MAX_ITEMS_PER_VISIT, replaceItemService, reschedule, transition } from "@/lib/appointments/service";
 import { parseExtras, type ExtraInput } from "@/lib/appointments/charges";
 import { sendAppointmentMessage } from "@/lib/whatsapp/service";
 import type { AppointmentStatus } from "@/generated/prisma/enums";
@@ -169,6 +169,20 @@ export async function completeAppointmentAction(id: string, extras: ExtraInput[]
     await completeAppointment({ appointmentId: id, tenantId: ctx.tenant.id, actor: "PROFESSIONAL", extras: parsed.extras, paymentMethod: isMethod(paymentMethod) ? paymentMethod : null });
     revalidateAgenda(id);
     return success();
+  } catch (e) {
+    return fail(errMessage(e));
+  }
+}
+
+/** Troca o procedimento de um serviço do agendamento (a cliente marcou um e fez outro). Só quem vê a equipe (dono, gerente, recepção). */
+export async function replaceServiceAction(input: { appointmentId: string; itemId: string; serviceId: string; professionalId?: string; addOnIds: string[] }): Promise<ActionResult> {
+  const ctx = await requireAuth();
+  if (!ctx.seesTeam) return fail("Só a recepção e a gestão trocam o serviço do atendimento.");
+  if (!(await loadAccessible(ctx, input.appointmentId))) return fail("Agendamento não encontrado");
+  try {
+    await replaceItemService({ tenant: ctx.tenant, appointmentId: input.appointmentId, itemId: input.itemId, serviceId: input.serviceId, professionalId: input.professionalId, addOnIds: input.addOnIds, actor: "PROFESSIONAL" });
+    revalidateAgenda(input.appointmentId);
+    return success("Serviço trocado.");
   } catch (e) {
     return fail(errMessage(e));
   }
