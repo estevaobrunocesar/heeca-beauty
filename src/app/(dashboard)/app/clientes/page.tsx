@@ -8,12 +8,14 @@ import { fmtDate } from "@/lib/dates";
 import { formatPhone, whatsappLink } from "@/lib/phone";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
+import { gruposDuplicados } from "@/lib/clients/unificar";
+import { UnificarClientes } from "./unificar";
 
 export const metadata: Metadata = { title: "Clientes" };
 
 export default async function ClientsPage({ searchParams }: PageProps<"/app/clientes">) {
   const sp = await searchParams;
-  const { tenant } = await requireAuth();
+  const { tenant, canManage } = await requireAuth();
   const { ficha } = perfilDoTenant(tenant);
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
 
@@ -31,6 +33,11 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
     take: 200,
   });
 
+  // Cadastros repetidos: só dona e gerente, e olhando todas as clientes (não só as 200 da busca).
+  const grupos = canManage && !q
+    ? gruposDuplicados((await db.client.findMany({ where: { tenantId: tenant.id }, select: { id: true, name: true, phone: true, createdAt: true, _count: { select: { appointments: true } } } })).map((c) => ({ id: c.id, name: c.name, phone: c.phone, createdAt: c.createdAt, atendimentos: c._count.appointments })))
+    : [];
+
   return (
     <>
       <PageHeader title="Clientes" description="Cadastrados automaticamente a cada agendamento." />
@@ -38,6 +45,8 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
         <input name="q" defaultValue={q} placeholder="Buscar por nome ou telefone" className="input min-w-0 flex-1 md:max-w-sm md:flex-none" />
         <button className="btn-secondary shrink-0">Buscar</button>
       </form>
+
+      <UnificarClientes grupos={grupos.map((g) => ({ principalId: g.principal.id, nome: g.principal.name, temTelefone: !!g.principal.phone, atendimentosTotal: g.principal.atendimentos + g.duplicadas.reduce((n, d) => n + d.atendimentos, 0), duplicadasIds: g.duplicadas.map((d) => d.id) }))} />
 
       {clients.length === 0 ? (
         <EmptyState title={q ? "Nenhuma cliente encontrada" : "Nenhuma cliente ainda"} description="As clientes aparecem aqui assim que fazem o primeiro agendamento." />

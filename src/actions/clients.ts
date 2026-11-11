@@ -8,6 +8,7 @@ import { parseClientPhone } from "@/lib/phone";
 import { fail, success, type ActionResult } from "@/lib/action-result";
 import { perfilDoTenant } from "@/lib/marca-atual";
 import { fichaDoForm } from "@/lib/clients/ficha";
+import { unificarClientes } from "@/lib/clients/unificar";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Informe o nome"),
@@ -60,4 +61,17 @@ export async function updateClientAction(id: string, _prev: ActionResult, formDa
   revalidatePath(`/app/clientes/${id}`);
   revalidatePath("/app/clientes");
   return success("Ficha atualizada");
+}
+
+/** Junta cadastros duplicados de uma mesma cliente (só dona e gerente: não há como desfazer). */
+export async function unificarClientesAction(principalId: string, duplicadasIds: string[]): Promise<ActionResult> {
+  const ctx = await requireAuth();
+  if (!ctx.canManage) return fail("Só a dona e a gerente unificam cadastros.");
+  try {
+    const r = await unificarClientes(ctx.tenant.id, principalId, duplicadasIds);
+    revalidatePath("/app/clientes");
+    return success(`${r.unificadas} cadastro(s) unificado(s).`);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Não foi possível unificar.");
+  }
 }
