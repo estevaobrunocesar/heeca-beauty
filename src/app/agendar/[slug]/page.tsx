@@ -7,7 +7,9 @@ import { formatCents } from "@/lib/money";
 import { computeDepositCents } from "@/lib/payments/deposit";
 import { policyItems, hasPolicies } from "@/lib/policies";
 import { BookingWizard } from "./booking-wizard";
-import { marcaDoTenant, mesmaMarcaDoHost, paletaDoTenant } from "@/lib/marca-atual";
+import { marcaDoTenant, mesmaMarcaDoHost, paletaDoTenant, peleDoTenant } from "@/lib/marca-atual";
+import { ESCALA_CAPA, temaDoTenant } from "@/lib/temas";
+import { cormorant } from "@/lib/fonts-tema";
 import { HEECA_PRODUCTS, HeecaAppIcon, type HeecaProduct } from "@/components/brand/logo";
 import { Gallery } from "./gallery";
 import { groupByCategory, UNCATEGORIZED_LABEL } from "@/lib/services/categories";
@@ -44,7 +46,12 @@ export async function generateMetadata({ params }: PageProps<"/agendar/[slug]">)
   };
 }
 
-const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+/** Corpo claro da página; num estabelecimento com tema, o mesmo corpo na pele escura (lib/temas.ts). */
+function Corpo({ pele, children }: { pele?: Record<string, string>; children: React.ReactNode }) {
+  return pele ? <div className="bg-white text-brand-950" style={pele as React.CSSProperties}>{children}</div> : <>{children}</>;
+}
+
+const WEEKDAYS =["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 /** "Seg–Sex 09:00–18:00 · Sáb 09:00–14:00" a partir das regras semanais de um profissional. */
 function openingHours(rules: { weekday: number; startMinutes: number; endMinutes: number }[]): string[] {
@@ -67,6 +74,11 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
   // Isolamento entre produtos: a página de um estabelecimento só existe no host da marca dele.
   if (!tenant || tenant.professionals.length === 0 || !(await mesmaMarcaDoHost(tenant))) notFound();
   const marca = marcaDoTenant(tenant);
+  // Tema próprio (lib/temas.ts): pele escura, serifa do site e logo clara. Sem tema, a página é a de sempre.
+  const tema = temaDoTenant(tenant);
+  const titulo = tema ? cormorant : serif;
+  const logo = tema?.logo ?? tenant.logoUrl;
+  const pele = peleDoTenant(tenant);
 
   const main = tenant.services.filter((s) => !s.isAddOn);
   const addOns = tenant.services.filter((s) => s.isAddOn);
@@ -85,18 +97,18 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
   const urlSite = tenant.website?.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
 
   return (
-    <div className="min-h-full bg-white text-brand-950" style={paletaDoTenant(tenant) as React.CSSProperties}>
+    <div className={`min-h-full ${tema ? `${cormorant.variable} bg-brand-950 text-white [font-variant-numeric:lining-nums]` : "bg-white text-brand-950"}`} style={(tema ? ESCALA_CAPA : paletaDoTenant(tenant)) as React.CSSProperties}>
       {/* Barra fixa: identidade + chamada para agendar */}
       <div className="sticky top-0 z-30 border-b border-white/10 bg-brand-950/85 text-white backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-5 py-2.5">
-          {tenant.logoUrl ? (
+          {logo ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={tenant.logoUrl} alt={tenant.businessName} className="h-9 w-auto max-w-[10rem] object-contain" />
+            <img src={logo} alt={tenant.businessName} className="h-9 w-auto max-w-[10rem] object-contain" />
           ) : (
-            <span className={`${serif.className} flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sm`}>{tenant.businessName.slice(0, 1).toUpperCase()}</span>
+            <span className={`${titulo.className} flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-sm`}>{tenant.businessName.slice(0, 1).toUpperCase()}</span>
           )}
           {/* Com logo, a logo é o nome (o alt já o diz): sem o texto ao lado. Sem logo, aparece o nome. */}
-          {tenant.logoUrl ? <span className="flex-1" aria-hidden /> : <span className="min-w-0 flex-1 truncate text-sm font-medium">{tenant.businessName}</span>}
+          {logo ? <span className="flex-1" aria-hidden /> : <span className="min-w-0 flex-1 truncate text-sm font-medium">{tenant.businessName}</span>}
           <a href="#agendar" className="shrink-0 rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-brand-900 transition hover:bg-brand-50">Agendar</a>
         </div>
       </div>
@@ -109,7 +121,7 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
             <p className="text-xs font-medium uppercase tracking-[0.22em] text-brand-200">
               {single ? tenant.professionals[0].name : `${tenant.professionals.length} profissionais`}{tenant.city ? ` · ${tenant.city}` : ""}
             </p>
-            <h1 className={`${serif.className} mt-4 text-[clamp(2.75rem,9vw,5.5rem)] font-medium leading-[0.95] tracking-tight`}>{tenant.businessName}</h1>
+            <h1 className={`${titulo.className} mt-4 text-[clamp(2.75rem,9vw,5.5rem)] font-medium leading-[0.95] tracking-tight`}>{tenant.businessName}</h1>
             {tenant.description && <p className="mt-6 max-w-md text-base leading-relaxed text-brand-50/85">{tenant.description}</p>}
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <a href="#agendar" className="rounded-full bg-white px-7 py-3.5 text-[15px] font-semibold text-brand-900 shadow-lg shadow-black/20 transition hover:-translate-y-0.5 hover:bg-brand-50">Agendar meu horário</a>
@@ -118,9 +130,9 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
               )}
             </div>
             <dl className="mt-10 flex flex-wrap gap-x-10 gap-y-4 border-t border-white/15 pt-6">
-              <div><dt className="text-[11px] uppercase tracking-widest text-brand-200">Serviços</dt><dd className={`${serif.className} text-3xl`}>{main.length}</dd></div>
-              <div><dt className="text-[11px] uppercase tracking-widest text-brand-200">Equipe</dt><dd className={`${serif.className} text-3xl`}>{tenant.professionals.length}</dd></div>
-              {desde > 0 && <div><dt className="text-[11px] uppercase tracking-widest text-brand-200">A partir de</dt><dd className={`${serif.className} text-3xl`}>{formatCents(desde)}</dd></div>}
+              <div><dt className="text-[11px] uppercase tracking-widest text-brand-200">Serviços</dt><dd className={`${titulo.className} text-3xl`}>{main.length}</dd></div>
+              <div><dt className="text-[11px] uppercase tracking-widest text-brand-200">Equipe</dt><dd className={`${titulo.className} text-3xl`}>{tenant.professionals.length}</dd></div>
+              {desde > 0 && <div><dt className="text-[11px] uppercase tracking-widest text-brand-200">A partir de</dt><dd className={`${titulo.className} text-3xl`}>{formatCents(desde)}</dd></div>}
             </dl>
           </div>
 
@@ -130,11 +142,11 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
               {heroPic ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={heroPic} alt="" className="h-full w-full object-cover" />
-              ) : tenant.logoUrl ? (
+              ) : logo ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={tenant.logoUrl} alt="" className="h-full w-full object-contain p-16" />
+                <img src={logo} alt="" className="h-full w-full object-contain p-16" />
               ) : (
-                <div className={`${serif.className} flex h-full items-center justify-center text-[10rem] text-white/20`}>{tenant.businessName.slice(0, 1).toUpperCase()}</div>
+                <div className={`${titulo.className} flex h-full items-center justify-center text-[10rem] text-white/20`}>{tenant.businessName.slice(0, 1).toUpperCase()}</div>
               )}
             </div>
             {sidePic && (
@@ -160,11 +172,12 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
         </div>
       </header>
 
+      <Corpo pele={pele}>
       {/* Serviços por categoria */}
       {grupos.length > 0 && (
         <section className="mx-auto max-w-6xl px-5 py-16 md:py-24">
           <p className="text-xs font-medium uppercase tracking-[0.22em] text-brand-600">Serviços</p>
-          <h2 className={`${serif.className} mt-2 max-w-xl text-4xl font-medium leading-tight md:text-5xl`}>O que a gente faz por você</h2>
+          <h2 className={`${titulo.className} mt-2 max-w-xl text-4xl font-medium leading-tight md:text-5xl`}>O que a gente faz por você</h2>
           <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {grupos.map((g) => {
               const min = Math.min(...g.items.map((i) => i.priceCents));
@@ -172,7 +185,7 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
                 <li key={g.category?.id ?? "outros"}>
                   <a href="#agendar" className="group flex h-full flex-col justify-between rounded-3xl border border-brand-100 bg-brand-50/50 p-6 transition hover:-translate-y-1 hover:border-brand-300 hover:bg-brand-50">
                     <div>
-                      <h3 className={`${serif.className} text-2xl font-medium`}>{g.category?.name ?? UNCATEGORIZED_LABEL}</h3>
+                      <h3 className={`${titulo.className} text-2xl font-medium`}>{g.category?.name ?? UNCATEGORIZED_LABEL}</h3>
                       <p className="mt-2 text-sm text-brand-900/70">{g.items.slice(0, 3).map((i) => i.name).join(" · ")}{g.items.length > 3 ? " …" : ""}</p>
                     </div>
                     <div className="mt-6 flex items-end justify-between text-sm">
@@ -191,7 +204,7 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
       <section className="bg-brand-50/60 py-16 md:py-24">
         <div className="mx-auto max-w-6xl px-5">
           <p className="text-xs font-medium uppercase tracking-[0.22em] text-brand-600">Equipe</p>
-          <h2 className={`${serif.className} mt-2 text-4xl font-medium leading-tight md:text-5xl`}>Quem cuida de você</h2>
+          <h2 className={`${titulo.className} mt-2 text-4xl font-medium leading-tight md:text-5xl`}>Quem cuida de você</h2>
           <ul className="mt-10 grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
             {tenant.professionals.slice(0, 12).map((p) => (
               <li key={p.id}>
@@ -200,10 +213,10 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={p.photoUrl} alt={p.name} loading="lazy" className="h-full w-full object-cover" />
                   ) : (
-                    <div className={`${serif.className} flex h-full items-center justify-center text-6xl text-white/80`}>{p.name.slice(0, 1).toUpperCase()}</div>
+                    <div className={`${titulo.className} flex h-full items-center justify-center text-6xl ${tema ? "text-brand-950/60" : "text-white/80"}`}>{p.name.slice(0, 1).toUpperCase()}</div>
                   )}
                 </div>
-                <p className={`${serif.className} mt-3 text-xl font-medium`}>{p.name}</p>
+                <p className={`${titulo.className} mt-3 text-xl font-medium`}>{p.name}</p>
                 {p.bio && <p className="mt-0.5 line-clamp-2 text-sm text-brand-900/65">{p.bio}</p>}
               </li>
             ))}
@@ -216,27 +229,29 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
       {mostrar.length > 0 && (
         <section className="mx-auto max-w-6xl px-5 py-16 md:py-24">
           <p className="text-xs font-medium uppercase tracking-[0.22em] text-brand-600">Portfólio</p>
-          <h2 className={`${serif.className} mt-2 mb-10 text-4xl font-medium leading-tight md:text-5xl`}>Trabalhos que falam por nós</h2>
+          <h2 className={`${titulo.className} mt-2 mb-10 text-4xl font-medium leading-tight md:text-5xl`}>Trabalhos que falam por nós</h2>
           <Gallery grid items={mostrar.map((p) => ({ id: p.id, imageUrl: p.imageUrl, title: p.title, description: p.description, category: p.category?.name ?? null }))} />
         </section>
       )}
+
+      </Corpo>
 
       {/* Pacotes (vitrine → WhatsApp) */}
       {tenant.packages.length > 0 && (
         <section className="bg-brand-950 py-16 text-white md:py-24">
           <div className="mx-auto max-w-6xl px-5">
             <p className="text-xs font-medium uppercase tracking-[0.22em] text-brand-200">Pacotes</p>
-            <h2 className={`${serif.className} mt-2 text-4xl font-medium leading-tight md:text-5xl`}>Mais sessões, menos por sessão</h2>
+            <h2 className={`${titulo.className} mt-2 text-4xl font-medium leading-tight md:text-5xl`}>Mais sessões, menos por sessão</h2>
             <ul className="mt-10 grid gap-4 md:grid-cols-2">
               {tenant.packages.map((p) => (
                 <li key={p.id} className="flex flex-col justify-between rounded-3xl border border-white/15 bg-white/5 p-6">
                   <div>
-                    <h3 className={`${serif.className} text-2xl`}>{p.name}</h3>
+                    <h3 className={`${titulo.className} text-2xl`}>{p.name}</h3>
                     <p className="mt-1 text-sm text-brand-100/80">{p.sessionsCount} sessões{p.validityDays ? ` · válido por ${p.validityDays} dias` : ""}</p>
                     {p.description && <p className="mt-2 text-sm text-brand-100/70">{p.description}</p>}
                   </div>
                   <div className="mt-6 flex items-center justify-between gap-3">
-                    <span className={`${serif.className} text-3xl`}>{formatCents(p.priceCents)}</span>
+                    <span className={`${titulo.className} text-3xl`}>{formatCents(p.priceCents)}</span>
                     {tenant.phone && <a href={whatsappLink(tenant.phone, `Olá! Tenho interesse no pacote "${p.name}".`)} target="_blank" rel="noreferrer" className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-brand-900 hover:bg-brand-50">Quero este</a>}
                   </div>
                 </li>
@@ -246,11 +261,12 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
         </section>
       )}
 
+      <Corpo pele={pele}>
       {/* Agendamento */}
       <section id="agendar" className="scroll-mt-14 bg-gradient-to-b from-white to-brand-50 py-16 md:py-24">
         <div className="mx-auto max-w-2xl px-5">
           <p className="text-center text-xs font-medium uppercase tracking-[0.22em] text-brand-600">Agendamento online</p>
-          <h2 className={`${serif.className} mt-2 text-center text-4xl font-medium leading-tight md:text-5xl`}>Reserve seu horário</h2>
+          <h2 className={`${titulo.className} mt-2 text-center text-4xl font-medium leading-tight md:text-5xl`}>Reserve seu horário</h2>
           <p className="mx-auto mt-3 max-w-md text-center text-sm text-brand-900/65">Escolha os serviços, o melhor horário e pronto. A confirmação chega no seu WhatsApp.</p>
           <div className="mt-10 rounded-[1.75rem] border border-brand-100 bg-white p-5 shadow-xl shadow-brand-900/5 sm:p-8">
             {main.length === 0 ? (
@@ -284,7 +300,7 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
       {/* Informações */}
       <section className="mx-auto grid max-w-6xl gap-10 px-5 py-16 text-sm md:grid-cols-3 md:py-20">
         <div>
-          <h2 className={`${serif.className} text-2xl font-medium`}>{tenant.openingHours ? "Horário de funcionamento" : "Horário de atendimento"}</h2>
+          <h2 className={`${titulo.className} text-2xl font-medium`}>{tenant.openingHours ? "Horário de funcionamento" : "Horário de atendimento"}</h2>
           {tenant.openingHours ? (
             <p className="mt-3 whitespace-pre-line text-brand-900/70">{tenant.openingHours}</p>
           ) : hours.length > 0 ? (
@@ -297,13 +313,13 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
           <div className="md:col-span-2">
             {tenant.extraInfo && (
               <>
-                <h2 className={`${serif.className} text-2xl font-medium`}>Bom saber</h2>
+                <h2 className={`${titulo.className} text-2xl font-medium`}>Bom saber</h2>
                 <p className="mt-3 whitespace-pre-line text-brand-900/70">{tenant.extraInfo}</p>
               </>
             )}
             {policies.length > 0 && (
               <>
-                <h2 className={`${serif.className} text-2xl font-medium ${tenant.extraInfo ? "mt-8" : ""}`}>Políticas de atendimento</h2>
+                <h2 className={`${titulo.className} text-2xl font-medium ${tenant.extraInfo ? "mt-8" : ""}`}>Políticas de atendimento</h2>
                 <ul className="mt-3 grid gap-3 sm:grid-cols-2">
                   {policies.map((p) => (
                     <li key={p.title} className="flex gap-2 rounded-2xl bg-brand-50/60 p-4 text-brand-900/75">
@@ -327,6 +343,7 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
           </span>
         </div>
       </footer>
+      </Corpo>
     </div>
   );
 }

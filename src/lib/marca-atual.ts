@@ -1,5 +1,6 @@
 import "server-only";
 import { corDaPagina, paletaDeCor } from "./cor-pagina";
+import { PELE_ESCURA, temaDoTenant } from "./temas";
 import { headers } from "next/headers";
 import { MARCA_PADRAO, marcaDoHost, marcaPorSlug, segmentosDe, fichaDe, type Marca } from "@/lib/marca";
 
@@ -24,6 +25,9 @@ export const marcaDoTenant = (tenant: { marca: string }): Marca => marcaPorSlug(
 
 /** Paleta da página do cliente final (agendar, confirmar, pagar): a cor escolhida pelo estabelecimento ou a da marca. */
 export const paletaDoTenant = (tenant: { marca: string; pageColor?: string | null }) => paletaDeCor(corDaPagina(tenant.pageColor, marcaDoTenant(tenant).cor));
+
+/** Pele escura do estabelecimento com tema (corpo das páginas do cliente e lateral do painel); sem tema, nada a sobrescrever. */
+export const peleDoTenant = (tenant: { slug: string }): Record<string, string> | undefined => (temaDoTenant(tenant) ? PELE_ESCURA : undefined);
 
 /** Marca, segmentos ativos e ficha do estabelecimento — o que quase toda página do painel precisa. */
 export function perfilDoTenant(tenant: { marca: string; segmentos: string[] }) {

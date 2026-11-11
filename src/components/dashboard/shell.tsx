@@ -5,6 +5,7 @@ import { Avatar } from "@/components/dashboard/avatar";
 import { logoutAction } from "@/actions/auth";
 import { portalUrl } from "@/lib/heeca/service";
 import type { Marca } from "@/lib/marca";
+import { PELE_ESCURA, type Tema } from "@/lib/temas";
 
 /**
  * Casca do painel (padrão Heeca): sidebar branca à esquerda no desktop (ícone do produto, navegação, cartão do
@@ -13,6 +14,8 @@ import type { Marca } from "@/lib/marca";
  */
 export type ShellProps = {
   marca: Marca;
+  /** Tema do estabelecimento (lib/temas.ts): lateral e barra inferior escuras, com a logo dele no lugar da do produto. */
+  tema?: Tema | null;
   tenant: { slug: string; businessName: string; heecaPlan: string | null; salasAtivas: boolean; clinicoAtivo: boolean };
   user: { name: string; email: string };
   role: NavRole;
@@ -34,20 +37,29 @@ const PLANOS: Record<string, { nome: string; proximo?: { nome: string; ganho: st
   "studio-plus": { nome: "Studio Plus" },
 };
 
-export function AppShell({ marca, tenant, user, role, permitidos, professionalId, professionalLabel, pendentes, hoje, children }: ShellProps) {
+export function AppShell({ marca, tema, tenant, user, role, permitidos, professionalId, professionalLabel, pendentes, hoje, children }: ShellProps) {
   const produto = (marca.slug in HEECA_PRODUCTS ? marca.slug : "heeca") as HeecaProduct;
   const plano = tenant.heecaPlan ? PLANOS[tenant.heecaPlan] ?? { nome: tenant.heecaPlan } : null;
   const nomeCurto = marca.nome.replace(/^Heeca /, "");
+  // Pele escura só na lateral e na barra inferior; o resto do painel segue claro.
+  const pele = tema ? (PELE_ESCURA as React.CSSProperties) : undefined;
   return (
     <div className="flex min-h-full flex-1">
       {/* Sidebar (desktop) */}
-      <aside className="hidden w-[232px] shrink-0 flex-col border-r border-line bg-white px-4 py-5 md:flex">
+      <aside className="hidden w-[232px] shrink-0 flex-col border-r border-line bg-white px-4 py-5 md:flex" style={pele}>
         <Link href="/app" className="mb-5 flex items-center gap-2.5 px-1.5">
-          <HeecaAppIcon product={produto} size={38} radius={10} className="shrink-0" />
-          <span className="min-w-0">
-            <span className="block truncate text-[16px] font-bold tracking-[-0.03em]">Heeca <span className="font-medium text-brand-600">{nomeCurto}</span></span>
-            <span className="block truncate text-[11px] font-medium text-mut">{tenant.businessName}</span>
-          </span>
+          {tema ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={tema.logo} alt={tenant.businessName} className="h-11 w-auto max-w-full object-contain" />
+          ) : (
+            <>
+              <HeecaAppIcon product={produto} size={38} radius={10} className="shrink-0" />
+              <span className="min-w-0">
+                <span className="block truncate text-[16px] font-bold tracking-[-0.03em]">Heeca <span className="font-medium text-brand-600">{nomeCurto}</span></span>
+                <span className="block truncate text-[11px] font-medium text-mut">{tenant.businessName}</span>
+              </span>
+            </>
+          )}
         </Link>
         <DashboardNav variant="sidebar" role={role} permitidos={permitidos} salas={tenant.salasAtivas} clinico={tenant.clinicoAtivo} />
         <div className="mt-auto space-y-3 pt-4">
@@ -83,8 +95,16 @@ export function AppShell({ marca, tenant, user, role, permitidos, professionalId
         <header className="sticky top-0 z-10 border-b border-line bg-canvas/85 backdrop-blur md:border-0 md:bg-transparent md:backdrop-blur-none">
           <div className="mx-auto flex max-w-[1240px] items-center gap-3 px-4 py-3 md:px-6 md:pt-5 md:pb-0">
             <Link href="/app" className="flex items-center gap-2 md:hidden">
-              <HeecaAppIcon product={produto} size={30} radius={8} />
-              <span className="text-[15px] font-bold tracking-[-0.03em]">Heeca <span className="font-medium text-brand-600">{nomeCurto}</span></span>
+              {tema ? (
+                // Logo clara: no celular a barra é clara, então ela vai sobre uma pastilha escura.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={tema.logo} alt={tenant.businessName} className="h-9 w-auto rounded-[10px] bg-[#0a0a0a] px-3 py-1.5" />
+              ) : (
+                <>
+                  <HeecaAppIcon product={produto} size={30} radius={8} />
+                  <span className="text-[15px] font-bold tracking-[-0.03em]">Heeca <span className="font-medium text-brand-600">{nomeCurto}</span></span>
+                </>
+              )}
             </Link>
             <form action="/app/clientes" className="hidden min-w-0 flex-1 md:block md:max-w-[340px]">
               <label className="flex items-center gap-2.5 rounded-[10px] border border-line bg-white px-3 py-2 text-mut-2 focus-within:border-brand-500">
@@ -118,7 +138,9 @@ export function AppShell({ marca, tenant, user, role, permitidos, professionalId
           <div className="mx-auto max-w-[1240px]">{children}</div>
         </main>
       </div>
-      <DashboardNav variant="bottom" role={role} permitidos={permitidos} salas={tenant.salasAtivas} clinico={tenant.clinicoAtivo} />
+      <div style={pele}>
+        <DashboardNav variant="bottom" role={role} permitidos={permitidos} salas={tenant.salasAtivas} clinico={tenant.clinicoAtivo} />
+      </div>
     </div>
   );
 }

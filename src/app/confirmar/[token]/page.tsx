@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { policyItems } from "@/lib/policies";
 import { describeProfessionals, describeVisit } from "@/lib/appointments/summary";
 import { ConfirmButtons } from "./confirm-buttons";
-import { paletaDoTenant } from "@/lib/marca-atual";
+import { paletaDoTenant, peleDoTenant } from "@/lib/marca-atual";
 
 export const metadata: Metadata = { title: "Confirmar agendamento" };
 
@@ -94,9 +94,9 @@ export default async function ConfirmPage({ params, searchParams }: PageProps<"/
   );
 }
 
-function Shell({ children, tenant }: { children: React.ReactNode; tenant?: { marca: string; pageColor: string | null } }) {
+function Shell({ children, tenant }: { children: React.ReactNode; tenant?: { slug: string; marca: string; pageColor: string | null } }) {
   return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-100 px-4 py-10" style={tenant ? (paletaDoTenant(tenant) as React.CSSProperties) : undefined}>
+    <main className="flex flex-1 items-center justify-center bg-zinc-100 px-4 py-10" style={tenant ? ({ ...paletaDoTenant(tenant), ...peleDoTenant(tenant) } as React.CSSProperties) : undefined}>
       <div className="card w-full max-w-md p-6">{children}</div>
     </main>
   );
