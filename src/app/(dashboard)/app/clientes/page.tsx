@@ -35,14 +35,38 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
     <>
       <PageHeader title="Clientes" description="Cadastrados automaticamente a cada agendamento." />
       <form className="mb-4 flex gap-2">
-        <input name="q" defaultValue={q} placeholder="Buscar por nome ou telefone" className="input max-w-sm" />
-        <button className="btn-secondary">Buscar</button>
+        <input name="q" defaultValue={q} placeholder="Buscar por nome ou telefone" className="input min-w-0 flex-1 md:max-w-sm md:flex-none" />
+        <button className="btn-secondary shrink-0">Buscar</button>
       </form>
 
       {clients.length === 0 ? (
         <EmptyState title={q ? "Nenhuma cliente encontrada" : "Nenhuma cliente ainda"} description="As clientes aparecem aqui assim que fazem o primeiro agendamento." />
       ) : (
-        <div className="card overflow-x-auto">
+        <>
+        {/* Celular: um cartão por cliente (a tabela de 7 colunas não cabe em 375 px). */}
+        <ul className="space-y-2 md:hidden">
+          {clients.map((c) => {
+            const pros = c.preferredProfessionals.map((r) => r.professional.name).sort((a, b) => a.localeCompare(b, "pt-BR")).join(", ");
+            const ultimo = c.appointments[0];
+            return (
+              <li key={c.id} className="card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link href={`/app/clientes/${c.id}`} className="block text-base font-semibold hover:underline">{c.name}{c.allergies && <span className="ml-1 text-rose-600" title={c.allergies}>⚠️</span>}</Link>
+                    {c.phone ? <a href={whatsappLink(c.phone)} target="_blank" rel="noreferrer" className="text-[15px] text-emerald-700 hover:underline">{formatPhone(c.phone)}</a> : <span className="text-[15px] text-zinc-400">Sem telefone</span>}
+                  </div>
+                  <Link href={`/app/agenda/novo?cliente=${encodeURIComponent(c.id)}`} className="btn-secondary shrink-0 px-3 py-1.5 text-sm">Agendar</Link>
+                </div>
+                <p className="mt-2 text-sm text-zinc-600">
+                  {c._count.appointments} atendimento{c._count.appointments === 1 ? "" : "s"}
+                  {ultimo && <> · último em {fmtDate(ultimo.startsAt, tenant.timezone)}: {ultimo.serviceName}</>}
+                </p>
+                {pros && <p className="text-sm text-zinc-500">Profissional: {pros}</p>}
+              </li>
+            );
+          })}
+        </ul>
+        <div className="card hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead className="bg-zinc-50 text-left text-xs text-zinc-500">
               <tr>
@@ -73,6 +97,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/app/clie
             </tbody>
           </table>
         </div>
+        </>
       )}
     </>
   );
