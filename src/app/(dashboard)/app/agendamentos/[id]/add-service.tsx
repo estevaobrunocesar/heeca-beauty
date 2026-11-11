@@ -14,19 +14,19 @@ type AddOn = { id: string; name: string; durationMinutes: number; priceCents: nu
 
 /**
  * Acrescenta um serviço a um agendamento ainda ativo: a cliente do cabelo decide fazer a unha na hora.
- * O horário vem preenchido (agora ou depois do último serviço) e pode ser ajustado; a agenda do profissional decide se cabe.
+ * O horário vem preenchido (agora ou depois do último serviço) e pode ser ajustado. Não há bloqueio de agenda: o serviço entra na agenda e na comissão de quem vai fazer.
  */
-export function AddServiceCard({ appointmentId, professionals, services, addOns, startNow, startAfter }: {
-  appointmentId: string; professionals: Pro[]; services: Service[]; addOns: AddOn[];
+export function AddServiceCard({ appointmentId, meuId, professionals, services, addOns, startNow, startAfter }: {
+  appointmentId: string; /** Profissional que está com a cliente: vem marcado em "Quem faz". */ meuId: string; professionals: Pro[]; services: Service[]; addOns: AddOn[];
   /** Início sugerido para "ao mesmo tempo" e para "depois do último serviço", em minutos do dia. */
   startNow: number; startAfter: number;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
-  const [professionalId, setProfessionalId] = useState(professionals[0]?.id ?? "");
+  const [professionalId, setProfessionalId] = useState(professionals.find((p) => p.id === meuId)?.id ?? professionals[0]?.id ?? "");
   const disponiveis = useMemo(() => services.filter((s) => s.professionalIds.includes(professionalId)), [services, professionalId]);
-  const [serviceId, setServiceId] = useState(() => services.find((s) => s.professionalIds.includes(professionals[0]?.id ?? ""))?.id ?? "");
+  const [serviceId, setServiceId] = useState(() => services.find((s) => s.professionalIds.includes(professionals.find((p) => p.id === meuId)?.id ?? professionals[0]?.id ?? ""))?.id ?? "");
   const [addOnIds, setAddOnIds] = useState<string[]>([]);
   const [quando, setQuando] = useState<"agora" | "depois">("agora");
   const [hora, setHora] = useState(minutesToHHMM(startNow));
@@ -62,7 +62,7 @@ export function AddServiceCard({ appointmentId, professionals, services, addOns,
       <section className="card flex items-center justify-between gap-3 p-5">
         <div>
           <h2 className="font-medium">Acrescentar serviço</h2>
-          <p className="text-sm text-zinc-500">A cliente decidiu fazer mais alguma coisa? Adicione ao mesmo atendimento.</p>
+          <p className="text-sm text-zinc-500">A cliente decidiu fazer mais alguma coisa? Adicione ao mesmo atendimento e indique quem faz. O valor soma na conta.</p>
         </div>
         <button type="button" className="btn-secondary shrink-0" onClick={() => setOpen(true)}>+ Acrescentar</button>
       </section>

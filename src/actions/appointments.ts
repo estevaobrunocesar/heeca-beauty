@@ -142,14 +142,16 @@ export async function createManualAppointmentAction(_prev: ActionResult, formDat
   }
 }
 
-/** Acrescenta um serviço a um agendamento ativo (ex.: a cliente do cabelo decidiu fazer a unha). STAFF só acrescenta serviços do próprio profissional. */
+/** Acrescenta um serviço a um agendamento ativo (ex.: a cliente do cabelo decidiu fazer a unha). O profissional principal indica quem mais atende (o serviço entra só na agenda e na comissão de quem faz). */
 export async function addServiceAction(input: { appointmentId: string; serviceId: string; professionalId: string; addOnIds: string[]; startMinutes: number }): Promise<ActionResult> {
   const ctx = await requireAuth();
   if (!(await loadAccessible(ctx, input.appointmentId))) return fail("Agendamento não encontrado");
   try {
-    const professional = resolveProfessional(ctx, input.professionalId);
+    // Quem já atende a cliente (inclusive STAFF) pode indicar um colega do estabelecimento para fazer o serviço novo.
+    const colega = await db.professional.findFirst({ where: { id: input.professionalId, tenantId: ctx.tenant.id, active: true }, select: { id: true } });
+    if (!colega) return fail("Profissional não encontrado.");
     await addServiceToAppointment({
-      tenant: ctx.tenant, appointmentId: input.appointmentId, serviceId: input.serviceId, professionalId: professional.id,
+      tenant: ctx.tenant, appointmentId: input.appointmentId, serviceId: input.serviceId, professionalId: colega.id,
       addOnIds: input.addOnIds, startMinutes: input.startMinutes, actor: "PROFESSIONAL",
     });
     revalidateAgenda(input.appointmentId);

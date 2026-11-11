@@ -535,9 +535,8 @@ type AddServiceInput = {
 
 /**
  * Acrescenta um serviço a um agendamento ainda ativo (a cliente decidiu fazer a unha depois do cabelo).
- * O novo serviço vira mais um item da visita, no profissional e no horário escolhidos, e só entra se couber na agenda
- * desse profissional (e na sala/recursos): a mesma regra de encaixe de uma reserva nova, sem o intervalo entre atendimentos
- * em relação aos itens da própria visita. Valor, duração, fim e comissão (apurada ao concluir) acompanham os itens.
+ * O novo serviço vira mais um item da visita, no profissional e no horário escolhidos. É um encaixe de balcão: a cliente está no salão,
+ * então a agenda do profissional não bloqueia (sala e recursos são usados quando livres). Só aparece na agenda de quem vai atender. Valor, duração, fim e comissão (apurada ao concluir) acompanham os itens.
  */
 export async function addServiceToAppointment(input: AddServiceInput) {
   const { tenant } = input;
@@ -558,28 +557,16 @@ export async function addServiceToAppointment(input: AddServiceInput) {
     start: toMinutesOfDay(it.startsAt, tz), end: toMinutesOfDay(it.endsAt, tz),
     bufferBeforeMinutes: it.bufferBeforeMinutes, bufferAfterMinutes: it.bufferAfterMinutes, resources: it.resources,
   }));
-  const tentar = (start: number) => placeItemsInVisit({ tenant, items: [r.visitItem], existing, dateKey, startMinutes: start, parallel: false, excludeAppointmentId: appt.id });
-
-  const placements = await tentar(input.startMinutes);
-  if (!placements) {
-    // Ajuda a recepção: o primeiro horário livre a partir do pedido, no mesmo dia.
-    let sugestao: number | null = null;
-    for (let m = input.startMinutes + 5; m < 1440 && sugestao == null; m += 5) if (await tentar(m)) sugestao = m;
-    const nome = (await db.professional.findUnique({ where: { id: input.professionalId }, select: { name: true } }))?.name ?? "O profissional";
-    throw new AppointmentError(
-      sugestao != null
-        ? `${nome} não está livre às ${minutesToHHMM(input.startMinutes)} para esse serviço. O primeiro horário livre é ${minutesToHHMM(sugestao)}.`
-        : `${nome} não tem horário livre para esse serviço a partir das ${minutesToHHMM(input.startMinutes)} neste dia.`,
-      "SLOT_UNAVAILABLE",
-    );
-  }
-  const p = placements[0];
+  // Encaixe no balcão: a cliente já está no salão e decidiu fazer mais um serviço. A recepção/profissional decide;
+  // por isso a agenda do profissional NÃO bloqueia. Se o encaixe normal couber, aproveita (sala e recursos); senão grava no horário pedido.
+  const placements = await placeItemsInVisit({ tenant, items: [r.visitItem], existing, dateKey, startMinutes: input.startMinutes, parallel: false, excludeAppointmentId: appt.id });
+  const p = placements?.[0] ?? { professionalId: input.professionalId, roomId: null as string | null, start: input.startMinutes, end: Math.min(1440, input.startMinutes + r.durationMinutes) };
   const startsAt = zonedDateTimeToUtc(dateKey, p.start, tz);
   const endsAt = zonedDateTimeToUtc(dateKey, p.end, tz);
 
   const updated = await db.$transaction(
     async (tx) => {
-      const created = await tx.appointmentItem.create({
+      await tx.appointmentItem.create({
         data: {
           tenantId: tenant.id, appointmentId: appt.id,
           professionalId: p.professionalId, roomId: p.roomId, serviceId: r.service.id,
@@ -590,21 +577,6 @@ export async function addServiceToAppointment(input: AddServiceInput) {
           resources: { create: (r.visitItem.resources ?? []).map((n) => ({ resourceId: n.resourceId, quantity: n.quantity })) },
         },
       });
-      // Proteção contra corrida (outra recepção marcando o mesmo profissional/sala ao mesmo tempo).
-      const concorrentes = await tx.appointmentItem.count({
-        where: { professionalId: p.professionalId, id: { not: created.id }, appointmentId: { not: appt.id }, appointment: { status: { in: ACTIVE_STATUSES } }, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
-      });
-      if (concorrentes >= tenant.maxConcurrentAppointments) throw new AppointmentError("Este horário acabou de ser reservado por outra pessoa.", "SLOT_UNAVAILABLE");
-      if (p.roomId) {
-        const ocupada = occupiedUtc(created);
-        const outras = await tx.appointmentItem.findMany({
-          where: { roomId: p.roomId, id: { not: created.id }, appointment: { status: { in: ACTIVE_STATUSES } }, startsAt: { lt: new Date(ocupada.endsAt.getTime() + 86_400_000) }, endsAt: { gt: new Date(ocupada.startsAt.getTime() - 86_400_000) } },
-          select: { startsAt: true, endsAt: true, bufferBeforeMinutes: true, bufferAfterMinutes: true },
-        });
-        if (outras.some((o) => { const oc = occupiedUtc(o); return oc.startsAt < ocupada.endsAt && oc.endsAt > ocupada.startsAt; })) {
-          throw new AppointmentError("Esta sala acabou de ser reservada por outra pessoa.", "SLOT_UNAVAILABLE");
-        }
-      }
       const todos = await tx.appointmentItem.findMany({ where: { appointmentId: appt.id }, orderBy: { sortOrder: "asc" }, select: { serviceName: true, startsAt: true, endsAt: true } });
       const inicio = new Date(Math.min(...todos.map((i) => i.startsAt.getTime())));
       const fim = new Date(Math.max(...todos.map((i) => i.endsAt.getTime())));

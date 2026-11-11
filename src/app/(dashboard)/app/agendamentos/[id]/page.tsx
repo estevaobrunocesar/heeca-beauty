@@ -52,6 +52,8 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
     : [[], []];
   // Trocar o profissional de um serviço: antes de concluir (a comissão é apurada ao concluir) e só para quem vê a equipe.
   const podeTrocar = podeAcrescentar && ctx.seesTeam;
+  // Acrescentar serviço: o profissional principal pode indicar qualquer colega ativo, não só ele mesmo.
+  const colegas = podeAcrescentar ? await db.professional.findMany({ where: { tenantId: tenant.id, active: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], select: { id: true, name: true, photoUrl: true } }) : [];
   const opcoesDoServico = (serviceId: string, atual: string) => {
     const doServico = servicosAtivos.find((x) => x.id === serviceId);
     return doServico ? equipe.filter((p) => p.id !== atual && doServico.professionals.some((ps) => ps.professionalId === p.id)).map((p) => ({ id: p.id, name: p.name })) : [];
@@ -136,10 +138,11 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
             </div>
           </section>
 
-          {podeAcrescentar && equipe.length > 0 && (
+          {podeAcrescentar && colegas.length > 0 && (
             <AddServiceCard
               appointmentId={a.id}
-              professionals={equipe.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photoUrl }))}
+              professionals={colegas}
+              meuId={ctx.professional.id}
               services={servicosAtivos.filter((x) => !x.isAddOn).map((x) => ({ id: x.id, name: x.name, durationMinutes: x.durationMinutes, priceCents: x.priceCents, professionalIds: x.professionals.map((p) => p.professionalId) }))}
               addOns={servicosAtivos.filter((x) => x.isAddOn).map((x) => ({ id: x.id, name: x.name, durationMinutes: x.durationMinutes, priceCents: x.priceCents }))}
               startNow={startNow}
