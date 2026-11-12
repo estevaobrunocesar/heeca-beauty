@@ -47,7 +47,7 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
   const { marca, segmentos, ficha } = perfilDoTenant(tenant);
   const horaLocal = Number(fmtDate(now, tz, "H"));
 
-  const [todayListTodas, ontem, mes, mesAnterior, concluidosMes, itensMes, clientesAtivas, clientesAtivasAntes, faltasMes, recentCompleted, mensagens, itensSemana, regras, servicesCount, proximoTodo, upcomingIds, extrasMes, extrasAnterior] = await Promise.all([
+  const [todayListTodas, ontem, mesTodos, mesAnteriorTodos, concluidosMesTodos, itensMes, clientesAtivas, clientesAtivasAntes, faltasMes, recentCompleted, mensagens, itensSemana, regras, servicesCount, proximoTodo, upcomingIds, extrasMesTodos, extrasAnteriorTodos] = await Promise.all([
     db.appointment.findMany({ where: { ...scope, startsAt: { gte: dayStart, lt: dayEnd } }, include: { client: { select: { id: true, name: true } }, items: { orderBy: { sortOrder: "asc" }, select: { professionalId: true, serviceName: true, startsAt: true, endsAt: true, priceCents: true, professional: { select: { name: true } } } } }, orderBy: { startsAt: "asc" } }),
     db.appointment.count({ where: { ...scope, startsAt: { gte: zonedDateTimeToUtc(addDaysToKey(today, -1), 0, tz), lt: dayStart }, status: { notIn: ["CANCELLED_BY_CLIENT", "CANCELLED_BY_PROFESSIONAL"] } } }),
     db.appointment.aggregate({ where: { ...scope, status: "COMPLETED", startsAt: { gte: monthStart } }, _count: true, _sum: { priceCents: true } }),
@@ -69,6 +69,21 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
     db.appointmentCharge.aggregate({ where: { tenantId: tenant.id, appointment: { ...scope, status: "COMPLETED", startsAt: { gte: prevMonthStart, lt: monthStart } } }, _sum: { amountCents: true } }),
   ]);
 
+  // Faturamento: dona/gerente/recepção veem o da casa; o profissional vê só o que ele atendeu (itens dele, sem os adicionais da visita).
+  let mes = mesTodos, mesAnterior = mesAnteriorTodos, concluidosMes = concluidosMesTodos, extrasMes = extrasMesTodos, extrasAnterior = extrasAnteriorTodos;
+  if (!ctx.seesTeam) {
+    const meus = await db.appointmentItem.findMany({
+      where: { tenantId: tenant.id, professionalId: { in: proIds }, startsAt: { gte: prevMonthStart }, appointment: { status: "COMPLETED" } },
+      select: { appointmentId: true, startsAt: true, priceCents: true },
+    });
+    const somar = (itens: typeof meus) => ({ _count: new Set(itens.map((i) => i.appointmentId)).size, _sum: { priceCents: itens.reduce((n, i) => n + i.priceCents, 0) } });
+    const doMes = meus.filter((i) => i.startsAt >= monthStart);
+    mes = { ...mesTodos, ...somar(doMes) };
+    mesAnterior = { ...mesAnteriorTodos, ...somar(meus.filter((i) => i.startsAt < monthStart)) };
+    concluidosMes = doMes.map((i) => ({ startsAt: i.startsAt, priceCents: i.priceCents, charges: [] }));
+    extrasMes = { ...extrasMesTodos, _sum: { amountCents: 0 } };
+    extrasAnterior = { ...extrasAnteriorTodos, _sum: { amountCents: 0 } };
+  }
   // Série do mês por dia (faturamento concluído), até hoje
   const hojeDia = Number(today.slice(8, 10));
   const porDia = new Map<number, number>();
@@ -113,7 +128,7 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
   const fatMes = (mes._sum.priceCents ?? 0) + (extrasMes._sum.amountCents ?? 0), fatAnterior = (mesAnterior._sum.priceCents ?? 0) + (extrasAnterior._sum.amountCents ?? 0);
   const deltaFat = fatAnterior > 0 ? Math.round(((fatMes - fatAnterior) / fatAnterior) * 100) : null;
   const ticketMedio = mes._count > 0 ? Math.round(fatMes / mes._count) : 0;
-  const meta = tenant.metaMensalCents;
+  const meta = tenant.metaMensalCents; // meta é da casa: o profissional não vê (seria comparar só a parte dele)
   const retornosNoPonto = returns.filter((r) => r.p.stage === "due" || r.p.stage === "overdue").length;
   const primeiroNome = ctx.user.name.split(" ")[0];
   const proximoFicha = proximo ? resumoFicha(ficha, lerFicha(proximo.client.ficha, ficha)) : "";
@@ -225,7 +240,7 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
 
         {/* ─── coluna direita ─── */}
         <aside className="grid min-w-0 content-start gap-3">
-          <section className="card min-w-0 p-4 text-center">
+          {ctx.seesTeam && <section className="card min-w-0 p-4 text-center">
             <div className="card-hd text-left"><h2 className="card-title">Meta do mês</h2>{ctx.can("configuracoes") && <Link href="/app/configuracoes" className="link-mut">{meta ? "editar" : "definir"}</Link>}</div>
             {meta ? (
               <>
@@ -236,7 +251,7 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
             ) : (
               <p className="py-4 text-sm text-mut">Defina uma meta de faturamento em Configurações e acompanhe aqui.</p>
             )}
-          </section>
+          </section>}
 
           <section className="card min-w-0 p-4">
             <div className="card-hd"><h2 className="card-title">Próximo atendimento</h2>{proximo && <Link href={`/app/agendamentos/${proximo.id}`} className="link-mut">abrir ›</Link>}</div>

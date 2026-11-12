@@ -67,6 +67,13 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
   const startAfter = arredonda5(toMinutesOfDay(a.endsAt, tz));
   // Profissional (não vê a equipe) vê só o próprio serviço quando outros profissionais também atendem a cliente.
   const v = ctx.seesTeam ? { ...a, totalCents: a.priceCents, recortada: false } : recorteDoProfissional(a, ctx.professionals.map((p) => p.id));
+  const minhasIds = ctx.professionals.map((p) => p.id);
+  // Histórico do profissional: sem os valores adicionais e sem as trocas/acréscimos de serviço de outros profissionais.
+  const eventoVisivel = (e: { type: string; data: unknown }, ids: string[]) => {
+    if (e.type === "CHARGES_ADDED" || e.type === "PROFESSIONAL_CHANGED") return false;
+    if (e.type === "ITEMS_ADDED" || e.type === "ITEM_REPLACED") return ids.includes((e.data as { professionalId?: string } | null)?.professionalId ?? "");
+    return true;
+  };
   const totalAdicionais = a.charges.reduce((n, c) => n + c.amountCents, 0);
   const { segmentos, ficha: campos } = perfilDoTenant(tenant);
   const grupos = Object.fromEntries(segmentos.map((s) => [s.slug, s.nome]));
@@ -169,7 +176,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
           <section className="card p-5">
             <h2 className="font-medium">Histórico</h2>
             <ol className="mt-3 space-y-2 text-sm">
-              {a.events.map((e) => (
+              {a.events.filter((e) => !v.recortada || eventoVisivel(e, minhasIds)).map((e) => (
                 <li key={e.id} className="flex gap-3">
                   <span className="w-36 shrink-0 text-xs text-zinc-400">{fmtDateTime(e.createdAt, tz)}</span>
                   <span className="text-zinc-700">
