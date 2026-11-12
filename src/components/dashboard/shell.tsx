@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { HEECA_PRODUCTS, HeecaAppIcon, type HeecaProduct } from "@/components/brand/logo";
+import { HEECA_PRODUCTS, type HeecaProduct } from "@/components/brand/logo";
+import { ProductAppIcon } from "@/components/brand/product-logo";
 import { DashboardNav, type NavRole } from "@/components/dashboard/nav";
 import { Avatar } from "@/components/dashboard/avatar";
 import { logoutAction } from "@/actions/auth";
@@ -53,7 +54,7 @@ export function AppShell({ marca, tema, tenant, user, role, permitidos, professi
             <img src={tema.logo} alt={tenant.businessName} className="h-11 w-auto max-w-full object-contain" />
           ) : (
             <>
-              <HeecaAppIcon product={produto} size={38} radius={10} className="shrink-0" />
+              <ProductAppIcon product={produto} size={38} radius={10} className="shrink-0" />
               <span className="min-w-0">
                 <span className="block truncate text-[16px] font-bold tracking-[-0.03em]">Heeca <span className="font-medium text-brand-600">{nomeCurto}</span></span>
                 <span className="block truncate text-[11px] font-medium text-mut">{tenant.businessName}</span>
@@ -101,7 +102,7 @@ export function AppShell({ marca, tema, tenant, user, role, permitidos, professi
                 <img src={tema.logo} alt={tenant.businessName} className="h-9 w-auto rounded-[10px] bg-[#0a0a0a] px-3 py-1.5" />
               ) : (
                 <>
-                  <HeecaAppIcon product={produto} size={30} radius={8} />
+                  <ProductAppIcon product={produto} size={30} radius={8} />
                   <span className="text-[15px] font-bold tracking-[-0.03em]">Heeca <span className="font-medium text-brand-600">{nomeCurto}</span></span>
                 </>
               )}

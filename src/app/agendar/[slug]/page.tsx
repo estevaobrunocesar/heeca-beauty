@@ -10,7 +10,8 @@ import { BookingWizard } from "./booking-wizard";
 import { marcaDoTenant, mesmaMarcaDoHost, paletaDoTenant, peleDoTenant } from "@/lib/marca-atual";
 import { ESCALA_CAPA, temaDoTenant } from "@/lib/temas";
 import { cormorant } from "@/lib/fonts-tema";
-import { HEECA_PRODUCTS, HeecaAppIcon, type HeecaProduct } from "@/components/brand/logo";
+import { HEECA_PRODUCTS, type HeecaProduct } from "@/components/brand/logo";
+import { ProductAppIcon } from "@/components/brand/product-logo";
 import { Gallery } from "./gallery";
 import { groupByCategory, UNCATEGORIZED_LABEL } from "@/lib/services/categories";
 import { Fraunces } from "next/font/google";
@@ -338,7 +339,7 @@ export default async function PublicBookingPage({ params }: PageProps<"/agendar/
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-6 text-xs text-brand-900/50">
           <span>© {new Date().getFullYear()} {tenant.businessName}</span>
           <span className="flex items-center gap-2">
-            <HeecaAppIcon product={(marca.slug in HEECA_PRODUCTS ? marca.slug : "heeca") as HeecaProduct} size={20} radius={5} />
+            <ProductAppIcon product={(marca.slug in HEECA_PRODUCTS ? marca.slug : "heeca") as HeecaProduct} size={20} radius={5} />
             Agendamento online por <span className="font-medium text-brand-900/70">{marca.nome}</span>
           </span>
         </div>
