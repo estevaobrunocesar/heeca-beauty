@@ -19,6 +19,7 @@ import { visitIsParallel } from "@/lib/scheduling/availability";
 import { AddServiceCard } from "./add-service";
 import { ChangeProfessional } from "./change-professional";
 import { ReplaceService } from "./replace-service";
+import { recorteDoProfissional } from "@/lib/appointments/summary";
 import { PaymentMethodPicker } from "./payment-method";
 import type { Method } from "@/lib/finance/rules";
 import { SessionEvolution } from "../../pacotes/[id]/clinical-tools";
@@ -64,6 +65,8 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
   const mesmoDia = toDateKey(a.startsAt, tz) === todayKey(tz);
   const startNow = arredonda5(mesmoDia ? Math.max(inicioVisita, agoraMin) : inicioVisita);
   const startAfter = arredonda5(toMinutesOfDay(a.endsAt, tz));
+  // Profissional (não vê a equipe) vê só o próprio serviço quando outros profissionais também atendem a cliente.
+  const v = ctx.seesTeam ? { ...a, totalCents: a.priceCents, recortada: false } : recorteDoProfissional(a, ctx.professionals.map((p) => p.id));
   const totalAdicionais = a.charges.reduce((n, c) => n + c.amountCents, 0);
   const { segmentos, ficha: campos } = perfilDoTenant(tenant);
   const grupos = Object.fromEntries(segmentos.map((s) => [s.slug, s.nome]));
@@ -81,11 +84,12 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
           <section className="card p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h1 className="text-xl font-semibold">{a.serviceName}</h1>
-                <p className="mt-1 text-zinc-600">{fmtDateTime(a.startsAt, tz)} → {fmtTime(a.endsAt, tz)} · {a.durationMinutes} min · {formatCents(a.priceCents)}{a.unit && <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">{a.unit.name}</span>}{visitIsParallel(a.items) && <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-800">serviços ao mesmo tempo</span>}</p>
+                <h1 className="text-xl font-semibold">{v.serviceName}</h1>
+                <p className="mt-1 text-zinc-600">{fmtDateTime(v.startsAt, tz)} → {fmtTime(v.endsAt, tz)} · {v.durationMinutes} min · {formatCents(v.priceCents)}{a.unit && <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">{a.unit.name}</span>}{visitIsParallel(v.items) && <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-800">serviços ao mesmo tempo</span>}</p>
                 {/* Itens da visita: um por serviço, cada um com profissional e horário próprios (SPEC §11) */}
+                {v.recortada && <p className="mt-2 text-xs text-zinc-500">Você vê só o seu serviço. Outros profissionais também atendem esta cliente.</p>}
                 <ul className="mt-3 space-y-1.5 text-sm">
-                  {a.items.map((it) => (
+                  {v.items.map((it) => (
                     <li key={it.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="w-24 shrink-0 tabular-nums text-zinc-500">{fmtTime(it.startsAt, tz)}–{fmtTime(it.endsAt, tz)}</span>
                       <span className="font-medium text-zinc-800">{it.serviceName}</span>
@@ -114,7 +118,7 @@ export default async function AppointmentDetailPage({ params }: PageProps<"/app/
                     </li>
                   ))}
                 </ul>
-                {a.charges.length > 0 && (
+                {a.charges.length > 0 && !v.recortada && (
                   <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm">
                     <p className="font-medium text-amber-900">Valores adicionais</p>
                     <ul className="mt-1 space-y-0.5 text-amber-900">

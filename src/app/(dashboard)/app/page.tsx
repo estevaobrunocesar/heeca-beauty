@@ -13,6 +13,7 @@ import { whatsappLink } from "@/lib/phone";
 import { perfilDoTenant } from "@/lib/marca-atual";
 import { escolheuSegmentos, fraseDeRetorno } from "@/lib/marca";
 import { withProfessionals } from "@/lib/appointments/queries";
+import { recorteDoProfissional } from "@/lib/appointments/summary";
 import { lerFicha, resumoFicha } from "@/lib/clients/ficha";
 import { saldosDoTenant } from "@/lib/stock/db";
 import { precisaReposicao, situacaoDe } from "@/lib/stock/rules";
@@ -46,8 +47,8 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
   const { marca, segmentos, ficha } = perfilDoTenant(tenant);
   const horaLocal = Number(fmtDate(now, tz, "H"));
 
-  const [todayList, ontem, mes, mesAnterior, concluidosMes, itensMes, clientesAtivas, clientesAtivasAntes, faltasMes, recentCompleted, mensagens, itensSemana, regras, servicesCount, proximo, upcomingIds, extrasMes, extrasAnterior] = await Promise.all([
-    db.appointment.findMany({ where: { ...scope, startsAt: { gte: dayStart, lt: dayEnd } }, include: { client: { select: { id: true, name: true } }, items: { orderBy: { sortOrder: "asc" }, select: { serviceName: true, professional: { select: { name: true } } } } }, orderBy: { startsAt: "asc" } }),
+  const [todayListTodas, ontem, mes, mesAnterior, concluidosMes, itensMes, clientesAtivas, clientesAtivasAntes, faltasMes, recentCompleted, mensagens, itensSemana, regras, servicesCount, proximoTodo, upcomingIds, extrasMes, extrasAnterior] = await Promise.all([
+    db.appointment.findMany({ where: { ...scope, startsAt: { gte: dayStart, lt: dayEnd } }, include: { client: { select: { id: true, name: true } }, items: { orderBy: { sortOrder: "asc" }, select: { professionalId: true, serviceName: true, startsAt: true, endsAt: true, priceCents: true, professional: { select: { name: true } } } } }, orderBy: { startsAt: "asc" } }),
     db.appointment.count({ where: { ...scope, startsAt: { gte: zonedDateTimeToUtc(addDaysToKey(today, -1), 0, tz), lt: dayStart }, status: { notIn: ["CANCELLED_BY_CLIENT", "CANCELLED_BY_PROFESSIONAL"] } } }),
     db.appointment.aggregate({ where: { ...scope, status: "COMPLETED", startsAt: { gte: monthStart } }, _count: true, _sum: { priceCents: true } }),
     db.appointment.aggregate({ where: { ...scope, status: "COMPLETED", startsAt: { gte: prevMonthStart, lt: monthStart } }, _count: true, _sum: { priceCents: true } }),
@@ -61,7 +62,7 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
     db.appointmentItem.findMany({ where: { tenantId: tenant.id, professionalId: { in: proIds }, startsAt: { gte: weekStart, lt: now }, appointment: { status: { in: ["CONFIRMED", "COMPLETED"] } } }, select: { durationMinutes: true } }),
     db.availabilityRule.findMany({ where: { professionalId: { in: proIds } }, select: { startMinutes: true, endMinutes: true, breakStartMinutes: true, breakEndMinutes: true } }),
     db.service.count({ where: { tenantId: tenant.id, active: true, deletedAt: null, isAddOn: false } }),
-    db.appointment.findFirst({ where: { ...scope, endsAt: { gt: now }, status: { in: ACTIVE_STATUSES } }, orderBy: { startsAt: "asc" }, include: { client: { select: { id: true, name: true, ficha: true } }, items: { orderBy: { sortOrder: "asc" }, select: { serviceName: true, professional: { select: { name: true, photoUrl: true } } } } } }),
+    db.appointment.findFirst({ where: { ...scope, endsAt: { gt: now }, status: { in: ACTIVE_STATUSES } }, orderBy: { startsAt: "asc" }, include: { client: { select: { id: true, name: true, ficha: true } }, items: { orderBy: { sortOrder: "asc" }, select: { professionalId: true, serviceName: true, startsAt: true, endsAt: true, priceCents: true, professional: { select: { name: true, photoUrl: true } } } } } }),
     db.appointment.findMany({ where: { ...scope, startsAt: { gte: now }, status: { in: ACTIVE_STATUSES } }, select: { clientId: true } }),
     // Valores adicionais (produtos usados) lançados ao concluir: entram no faturamento, fora da comissão.
     db.appointmentCharge.aggregate({ where: { tenantId: tenant.id, appointment: { ...scope, status: "COMPLETED", startsAt: { gte: monthStart } } }, _sum: { amountCents: true } }),
@@ -104,6 +105,10 @@ export default async function DashboardHome({ searchParams }: PageProps<"/app">)
   }
   const pedirSegmentos = ctx.can("configuracoes") && !escolheuSegmentos(marca, tenant);
 
+  // Profissional (não vê a equipe) enxerga só o próprio serviço quando a visita tem mais de um profissional.
+  const recorte = <T extends Parameters<typeof recorteDoProfissional>[0]>(a: T) => (ctx.seesTeam ? a : recorteDoProfissional(a, proIds));
+  const todayList = todayListTodas.map(recorte);
+  const proximo = proximoTodo ? recorte(proximoTodo) : null;
   const ativosHoje = todayList.filter((a) => ACTIVE_STATUSES.includes(a.status) || a.status === "COMPLETED");
   const fatMes = (mes._sum.priceCents ?? 0) + (extrasMes._sum.amountCents ?? 0), fatAnterior = (mesAnterior._sum.priceCents ?? 0) + (extrasAnterior._sum.amountCents ?? 0);
   const deltaFat = fatAnterior > 0 ? Math.round(((fatMes - fatAnterior) / fatAnterior) * 100) : null;

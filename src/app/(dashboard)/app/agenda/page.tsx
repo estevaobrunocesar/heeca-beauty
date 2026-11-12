@@ -12,6 +12,7 @@ import { Avatar } from "@/components/dashboard/avatar";
 import { ScheduleManager } from "./schedule-manager";
 import type { AppointmentStatus } from "@/generated/prisma/enums";
 import { cardInclude, withProfessionals } from "@/lib/appointments/queries";
+import { recorteDoProfissional } from "@/lib/appointments/summary";
 import { RoomDayView, type RoomColumn } from "./room-day-view";
 import { valeNaUnidade } from "@/lib/units/rules";
 
@@ -86,8 +87,11 @@ export default async function AgendaPage({ searchParams }: PageProps<"/app/agend
     db.scheduleException.findMany({ where: { professionalId: { in: proIds }, date: { gte: dateKeyToDate(fromKey), lte: dateKeyToDate(toKey) } }, orderBy: { date: "asc" } }),
   ]);
 
-  const byDay = new Map<string, typeof appointments>();
-  for (const a of appointments) {
+  // Profissional (não vê a equipe) só enxerga o próprio serviço de uma visita com mais de um profissional.
+  const minhas = ctx.professionals.map((p) => p.id);
+  const visitas = ctx.seesTeam ? appointments.map((a) => ({ ...a, totalCents: a.priceCents })) : appointments.map((a) => recorteDoProfissional(a, minhas));
+  const byDay = new Map<string, typeof visitas>();
+  for (const a of visitas) {
     const k = toDateKey(a.startsAt, tz);
     byDay.set(k, [...(byDay.get(k) ?? []), a]);
   }

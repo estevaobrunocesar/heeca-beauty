@@ -11,7 +11,7 @@ import { Avatar } from "./avatar";
 type CardItem = { serviceName: string; professional: { name: string; photoUrl: string | null }; room?: { name: string } | null; addOns?: { name: string }[] };
 
 type Props = {
-  appointment: Appointment & { client: Client; items: CardItem[] };
+  appointment: Appointment & { client: Client; items: CardItem[]; /** Valor da conta inteira, quando o cartão mostra só o serviço de um profissional. */ totalCents?: number };
   tz: string;
   compact?: boolean;
   showProfessional?: boolean;
@@ -71,7 +71,7 @@ export function AppointmentCard({ appointment: a, tz, compact, showProfessional 
         )}
         {a.notes && <p className="mt-1 text-xs text-zinc-500">Obs.: {a.notes}</p>}
       </div>
-      <QuickActions id={a.id} status={a.status} priceCents={a.priceCents} />
+      <QuickActions id={a.id} status={a.status} priceCents={a.totalCents ?? a.priceCents} />
     </div>
   );
 }

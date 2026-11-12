@@ -29,3 +29,29 @@ export function visitTotals(items: { durationMinutes: number; priceCents: number
     { durationMinutes: 0, priceCents: 0 },
   );
 }
+
+type ItemDoRecorte = { professionalId: string; serviceName: string; startsAt: Date; endsAt: Date; priceCents: number };
+type VisitaDoRecorte = { startsAt: Date; endsAt: Date; serviceName: string; priceCents: number; durationMinutes: number };
+
+/**
+ * Visão de quem não vê a equipe (profissional): só os serviços dele. Nome, horário, duração e valor da visita passam a ser
+ * os do próprio trabalho; `totalCents` guarda o valor da conta inteira (o fechamento continua somando todos os serviços).
+ * Se nenhum item é dele, devolve a visita como está.
+ */
+export function recorteDoProfissional<I extends ItemDoRecorte, A extends VisitaDoRecorte & { items: I[] }>(a: A, professionalIds: string[]) {
+  const meus = a.items.filter((i) => professionalIds.includes(i.professionalId));
+  if (meus.length === 0 || meus.length === a.items.length) return { ...a, totalCents: a.priceCents, recortada: false };
+  const startsAt = new Date(Math.min(...meus.map((i) => i.startsAt.getTime())));
+  const endsAt = new Date(Math.max(...meus.map((i) => i.endsAt.getTime())));
+  return {
+    ...a,
+    items: meus,
+    serviceName: describeVisit(meus),
+    priceCents: meus.reduce((n, i) => n + i.priceCents, 0),
+    startsAt,
+    endsAt,
+    durationMinutes: Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000),
+    totalCents: a.priceCents,
+    recortada: true,
+  };
+}
